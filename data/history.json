@@ -37,7 +37,7 @@
             0,
             0
           ],
-          "longestSessionMinutes": 5,
+          "longestActiveSessionMinutes": 5,
           "tools": {
             "Bash": 6,
             "Edit": 3,
@@ -92,7 +92,7 @@
             0,
             0
           ],
-          "longestSessionMinutes": 23,
+          "longestActiveSessionMinutes": 23,
           "tools": {}
         },
         "families": {
@@ -142,7 +142,7 @@
             0,
             0
           ],
-          "longestSessionMinutes": 1242,
+          "longestActiveSessionMinutes": 17,
           "tools": {
             "Bash": 84,
             "Glob": 1,
@@ -198,7 +198,7 @@
             0,
             0
           ],
-          "longestSessionMinutes": 72,
+          "longestActiveSessionMinutes": 3,
           "tools": {
             "AskUserQuestion": 1,
             "Bash": 4
@@ -251,7 +251,7 @@
             3,
             0
           ],
-          "longestSessionMinutes": 682,
+          "longestActiveSessionMinutes": 110,
           "tools": {
             "Agent": 3,
             "Bash": 2,
@@ -297,12 +297,12 @@
     "2026-10-01": {
       "claude-code": {
         "all": {
-          "freshInput": 227,
-          "cacheWrite": 365625,
-          "cacheRead": 26199374,
-          "output": 196650,
+          "freshInput": 267,
+          "cacheWrite": 430949,
+          "cacheRead": 34301331,
+          "output": 240397,
           "sessions": 0,
-          "prompts": 4,
+          "prompts": 5,
           "promptsByHour": [
             0,
             0,
@@ -313,7 +313,7 @@
             0,
             0,
             3,
-            1,
+            2,
             0,
             0,
             0,
@@ -329,23 +329,23 @@
             0,
             0
           ],
-          "longestSessionMinutes": 0,
+          "longestActiveSessionMinutes": 0,
           "tools": {
-            "Bash": 25,
-            "Edit": 43,
-            "PowerShell": 23,
-            "Read": 17,
-            "Write": 43
+            "Bash": 33,
+            "Edit": 75,
+            "PowerShell": 29,
+            "Read": 21,
+            "Write": 50
           }
         },
         "families": {
           "Opus": {
-            "freshInput": 102,
-            "cacheWrite": 165141,
-            "cacheRead": 15791250,
-            "output": 136696,
+            "freshInput": 142,
+            "cacheWrite": 230465,
+            "cacheRead": 23893207,
+            "output": 180443,
             "sessions": 0,
-            "prompts": 1
+            "prompts": 2
           },
           "Sonnet": {
             "freshInput": 125,

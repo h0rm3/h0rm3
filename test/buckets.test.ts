@@ -1,42 +1,49 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { timeBucket, weekdayName, computeTimeBuckets, WEEKDAY_ORDER } from "../src/metrics.js";
-
-function at(hour: number, minute = 0): Date {
-  return new Date(2026, 5, 15, hour, minute);
-}
+import { timeBucketOfHour, weekdayName, WEEKDAY_ORDER, percentRows } from "../src/metrics.js";
+import { dateKey, hourOf, zonedTimeToUtc } from "../src/tz.js";
 
 test("time bucket boundaries", () => {
-  assert.equal(timeBucket(at(5, 0)), "Morning");
-  assert.equal(timeBucket(at(11, 59)), "Morning");
-  assert.equal(timeBucket(at(12, 0)), "Daytime");
-  assert.equal(timeBucket(at(16, 59)), "Daytime");
-  assert.equal(timeBucket(at(17, 0)), "Evening");
-  assert.equal(timeBucket(at(20, 59)), "Evening");
-  assert.equal(timeBucket(at(21, 0)), "Night");
-  assert.equal(timeBucket(at(23, 59)), "Night");
+  assert.equal(timeBucketOfHour(5), "Morning");
+  assert.equal(timeBucketOfHour(11), "Morning");
+  assert.equal(timeBucketOfHour(12), "Daytime");
+  assert.equal(timeBucketOfHour(16), "Daytime");
+  assert.equal(timeBucketOfHour(17), "Evening");
+  assert.equal(timeBucketOfHour(20), "Evening");
+  assert.equal(timeBucketOfHour(21), "Night");
+  assert.equal(timeBucketOfHour(23), "Night");
 });
 
 test("Night bucket wraps past midnight", () => {
-  assert.equal(timeBucket(at(0, 0)), "Night");
-  assert.equal(timeBucket(at(4, 59)), "Night");
-  // and the boundary right before Morning starts
-  assert.notEqual(timeBucket(at(5, 0)), "Night");
+  assert.equal(timeBucketOfHour(0), "Night");
+  assert.equal(timeBucketOfHour(4), "Night");
+  assert.notEqual(timeBucketOfHour(5), "Night");
 });
 
-test("late-night and early-morning-of-next-day events both count as one Night bucket", () => {
-  const lateNight = new Date(2026, 5, 15, 23, 30);
-  const earlyMorning = new Date(2026, 5, 16, 0, 30);
-  const result = computeTimeBuckets([lateNight, earlyMorning]);
-  const night = result.find((b) => b.bucket === "Night")!;
-  assert.equal(night.count, 2);
-  assert.equal(night.percent, 100);
+test("instants are bucketed in America/New_York regardless of machine timezone", () => {
+  // 03:30 UTC on Jun 16 is 23:30 EDT on Jun 15
+  assert.equal(dateKey("2026-06-16T03:30:00Z"), "2026-06-15");
+  assert.equal(hourOf("2026-06-16T03:30:00Z"), 23);
+  assert.equal(timeBucketOfHour(hourOf("2026-06-16T03:30:00Z")), "Night");
+  // winter (EST, UTC-5): 04:59 UTC Jan 10 is 23:59 Jan 9
+  assert.equal(dateKey("2026-01-10T04:59:00Z"), "2026-01-09");
+  assert.equal(dateKey("2026-01-10T05:00:00Z"), "2026-01-10");
+});
+
+test("zonedTimeToUtc handles both DST offsets", () => {
+  assert.equal(zonedTimeToUtc("2026-07-01").toISOString(), "2026-07-01T04:00:00.000Z");
+  assert.equal(zonedTimeToUtc("2026-01-01").toISOString(), "2026-01-01T05:00:00.000Z");
+  assert.equal(zonedTimeToUtc("2026-07-01", 0, "America/Los_Angeles").toISOString(), "2026-07-01T07:00:00.000Z");
 });
 
 // Jan 1 2026 is a Thursday, so Jan 5 2026 is a Monday.
 test("weekday names, Monday-first", () => {
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(2026, 0, 5 + i, 12);
-    assert.equal(weekdayName(d), WEEKDAY_ORDER[i]);
-  }
+  for (let i = 0; i < 7; i++) assert.equal(weekdayName(`2026-01-${String(5 + i).padStart(2, "0")}`), WEEKDAY_ORDER[i]);
+});
+
+test("percentages always sum to exactly 100.0", () => {
+  const rows = percentRows([1, 1, 1, 1, 1, 1, 1].map((value, i) => ({ label: String(i), value })));
+  assert.equal(Math.round(rows.reduce((a, r) => a + r.percent, 0) * 10), 1000);
+  const skewed = percentRows([{ label: "a", value: 9991 }, { label: "b", value: 3 }, { label: "c", value: 3 }, { label: "d", value: 3 }]);
+  assert.equal(Math.round(skewed.reduce((a, r) => a + r.percent, 0) * 10), 1000);
 });

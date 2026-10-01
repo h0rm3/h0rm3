@@ -1,26 +1,21 @@
-import type { AiPrompt, AiTurn, CommitRecord, LanguageTotals, Stats, TimeBucketStats, WeekdayStats } from "./types.js";
-import { localDateKey } from "./dateUtils.js";
+import type { AiBlock, CommitRecord, History, LanguageTotals, Row, Source, Stats, Totals } from "./types.js";
+import { addDays, dateKey, dayDiff, hourOf, weekdayOfKey } from "./tz.js";
 
 export const TIME_BUCKET_ORDER = ["Morning", "Daytime", "Evening", "Night"] as const;
-export const TIME_BUCKET_EMOJI: Record<string, string> = {
-  Morning: "🌞",
-  Daytime: "🌆",
-  Evening: "🌃",
-  Night: "🌙",
-};
+export const TIME_BUCKET_EMOJI: Record<string, string> = { Morning: "🌞", Daytime: "🌆", Evening: "🌃", Night: "🌙" };
 export const WEEKDAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 
-export function timeBucket(date: Date): string {
-  const h = date.getHours();
+/** Morning 05-11, Daytime 12-16, Evening 17-20, Night 21-04 (wraps midnight). */
+export function timeBucketOfHour(h: number): string {
   if (h >= 5 && h <= 11) return "Morning";
   if (h >= 12 && h <= 16) return "Daytime";
   if (h >= 17 && h <= 20) return "Evening";
-  return "Night"; // 21:00-23:59 and 00:00-04:59
+  return "Night";
 }
 
-export function weekdayName(date: Date): string {
-  // JS getDay(): 0=Sunday..6=Saturday; rotate so Monday is first.
-  return WEEKDAY_ORDER[(date.getDay() + 6) % 7];
+/** Monday-first weekday name for a calendar date key. */
+export function weekdayName(key: string): string {
+  return WEEKDAY_ORDER[(weekdayOfKey(key) + 6) % 7];
 }
 
 export function article(word: string): "a" | "an" {
@@ -32,199 +27,180 @@ export function blockBar(value: number, max: number, width = 25): string {
   return "█".repeat(filled) + "░".repeat(width - filled);
 }
 
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
-}
-
-function sum<T>(items: T[], f: (item: T) => number): number {
-  return items.reduce((acc, item) => acc + f(item), 0);
-}
-
-function countBy(dates: Date[], keyFn: (d: Date) => string, order: readonly string[]): Map<string, number> {
-  const counts = new Map<string, number>(order.map((k) => [k, 0]));
-  for (const d of dates) {
-    const k = keyFn(d);
-    counts.set(k, (counts.get(k) ?? 0) + 1);
+/** One-decimal percentages via largest remainder, so displayed values sum to exactly 100.0. */
+export function percentRows(items: { label: string; value: number }[]): Row[] {
+  const total = items.reduce((a, i) => a + i.value, 0);
+  if (total === 0) return items.map((i) => ({ ...i, percent: 0 }));
+  const raw = items.map((i) => (i.value / total) * 1000);
+  const floors = raw.map(Math.floor);
+  let remaining = 1000 - floors.reduce((a, b) => a + b, 0);
+  const order = raw.map((r, idx) => ({ idx, frac: r - Math.floor(r) })).sort((a, b) => b.frac - a.frac || a.idx - b.idx);
+  for (const { idx } of order) {
+    if (remaining <= 0) break;
+    floors[idx]++;
+    remaining--;
   }
-  return counts;
+  return items.map((i, idx) => ({ label: i.label, value: i.value, percent: floors[idx] / 10 }));
 }
 
-export function computeTimeBuckets(dates: Date[]): TimeBucketStats[] {
-  const counts = countBy(dates, timeBucket, TIME_BUCKET_ORDER);
-  const total = dates.length;
-  const max = Math.max(0, ...counts.values());
-  return TIME_BUCKET_ORDER.map((bucket) => {
-    const count = counts.get(bucket)!;
-    return { bucket, count, percent: total > 0 ? round1((count / total) * 100) : 0, bar: blockBar(count, max) };
-  });
-}
-
-export function computeWeekdays(dates: Date[]): WeekdayStats[] {
-  const counts = countBy(dates, weekdayName, WEEKDAY_ORDER);
-  const total = dates.length;
-  const max = Math.max(0, ...counts.values());
-  return WEEKDAY_ORDER.map((weekday) => {
-    const count = counts.get(weekday)!;
-    return { weekday, count, percent: total > 0 ? round1((count / total) * 100) : 0, bar: blockBar(count, max) };
-  });
-}
-
-export function computeBuilderProfile(commits: CommitRecord[], prompts: AiPrompt[]): Stats["builderProfile"] {
-  const dates = [...commits.map((c) => new Date(c.timestamp)), ...prompts.map((p) => new Date(p.timestamp))];
-  const timeBuckets = computeTimeBuckets(dates);
-  const weekdays = computeWeekdays(dates);
-
-  if (dates.length === 0) {
-    return { timeBuckets, weekdays, headline: "Not enough data yet to say what kind of builder I am." };
-  }
-
-  const topBucket = timeBuckets.reduce((max, b) => (b.count > max.count ? b : max), timeBuckets[0]);
-  const topWeekday = weekdays.reduce((max, w) => (w.count > max.count ? w : max), weekdays[0]);
-  const headline = `I'm ${article(topBucket.bucket)} ${topBucket.bucket} builder, most active on ${topWeekday.weekday}`;
-
-  return { timeBuckets, weekdays, headline };
-}
-
-export function computeLanguagePercents(totals: LanguageTotals, otherThresholdPercent = 1): Stats["languages"] {
-  const totalBytes = sum(Object.values(totals), (b) => b);
-  if (totalBytes === 0) return [];
-
-  const entries = Object.entries(totals)
-    .map(([name, bytes]) => ({ name, bytes, percent: (bytes / totalBytes) * 100 }))
-    .sort((a, b) => b.bytes - a.bytes);
-
-  const kept = entries.filter((e) => e.percent >= otherThresholdPercent);
-  const rest = entries.filter((e) => e.percent < otherThresholdPercent);
-
-  const result = kept.map((e) => ({ name: e.name, bytes: e.bytes, percent: round1(e.percent) }));
-  if (rest.length > 0) {
-    const otherBytes = sum(rest, (e) => e.bytes);
-    result.push({ name: "Other", bytes: otherBytes, percent: round1((otherBytes / totalBytes) * 100) });
-  }
-  return result;
-}
-
-export function computeStreaks(
-  dailyCounts: Map<string, number>,
-  today: Date = new Date(),
-): Stats["streak"] {
-  const totalCommits = sum([...dailyCounts.values()], (v) => v);
-  const activeDays = [...dailyCounts.entries()]
-    .filter(([, count]) => count > 0)
-    .map(([key]) => key)
-    .sort();
-
-  if (activeDays.length === 0) return { totalCommits: 0, currentStreak: 0, longestStreak: 0 };
+export function computeStreaks(commitDays: Record<string, number>, todayKey: string): Stats["streak"] {
+  const totalCommits = Object.values(commitDays).reduce((a, b) => a + b, 0);
+  const active = Object.keys(commitDays).filter((k) => commitDays[k] > 0).sort();
+  if (active.length === 0) return { totalCommits, currentStreak: 0, longestStreak: 0 };
 
   let longestStreak = 1;
   let run = 1;
-  for (let i = 1; i < activeDays.length; i++) {
-    const diff = dayDiffKeys(activeDays[i], activeDays[i - 1]);
-    run = diff === 1 ? run + 1 : 1;
-    if (run > longestStreak) longestStreak = run;
+  for (let i = 1; i < active.length; i++) {
+    run = dayDiff(active[i], active[i - 1]) === 1 ? run + 1 : 1;
+    longestStreak = Math.max(longestStreak, run);
   }
-
-  const todayKey = localDateKey(today);
-  const mostRecent = activeDays[activeDays.length - 1];
-  const gapFromToday = dayDiffKeys(todayKey, mostRecent);
 
   let currentStreak = 0;
-  if (gapFromToday <= 1) {
+  // Today may not have a commit yet; the streak stays alive if the latest active day is today or yesterday.
+  if (dayDiff(todayKey, active[active.length - 1]) <= 1) {
     currentStreak = 1;
-    for (let i = activeDays.length - 2; i >= 0; i--) {
-      if (dayDiffKeys(activeDays[i + 1], activeDays[i]) === 1) currentStreak++;
-      else break;
-    }
+    for (let i = active.length - 2; i >= 0 && dayDiff(active[i + 1], active[i]) === 1; i--) currentStreak++;
   }
-
   return { totalCommits, currentStreak, longestStreak };
 }
 
-function dayDiffKeys(aKey: string, bKey: string): number {
-  const [ay, am, ad] = aKey.split("-").map(Number);
-  const [by, bm, bd] = bKey.split("-").map(Number);
-  const a = new Date(ay, am - 1, ad);
-  const b = new Date(by, bm - 1, bd);
-  return Math.round((a.getTime() - b.getTime()) / 86_400_000);
+export function series(days: string[], counts: Record<string, number>): { date: string; count: number }[] {
+  return days.map((date) => ({ date, count: counts[date] ?? 0 }));
 }
 
-export function computeCommitsPerDay(
-  dailyCounts: Map<string, number>,
-  now: Date = new Date(),
-  days = 90,
-): Stats["commitsPerDay"] {
-  const result: Stats["commitsPerDay"] = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    const key = localDateKey(d);
-    result.push({ date: key, count: dailyCounts.get(key) ?? 0 });
+function addTotals(acc: Totals, t: Totals): void {
+  acc.freshInput += t.freshInput;
+  acc.cacheWrite += t.cacheWrite;
+  acc.cacheRead += t.cacheRead;
+  acc.output += t.output;
+  acc.sessions += t.sessions;
+  acc.prompts += t.prompts;
+}
+
+const tokensOf = (t: Totals) => t.freshInput + t.cacheWrite + t.cacheRead + t.output;
+
+/** Sums one source over the given day keys (or all days when `days` is null). */
+export function aiBlock(history: History, source: Source, days: string[] | null): AiBlock {
+  const keys = days ?? Object.keys(history.days);
+  const all: Totals = { freshInput: 0, cacheWrite: 0, cacheRead: 0, output: 0, sessions: 0, prompts: 0 };
+  const fams = new Map<string, Totals>();
+  for (const k of keys) {
+    const sd = history.days[k]?.[source];
+    if (!sd) continue;
+    addTotals(all, sd.all);
+    for (const [f, t] of Object.entries(sd.families)) {
+      const acc = fams.get(f) ?? { freshInput: 0, cacheWrite: 0, cacheRead: 0, output: 0, sessions: 0, prompts: 0 };
+      addTotals(acc, t);
+      fams.set(f, acc);
+    }
   }
-  return result;
+  const famItems = [...fams.entries()]
+    .map(([label, t]) => ({ label, value: tokensOf(t) }))
+    .filter((i) => i.value > 0)
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+  return {
+    freshInput: all.freshInput,
+    cacheWrite: all.cacheWrite,
+    cacheRead: all.cacheRead,
+    output: all.output,
+    totalInput: all.freshInput + all.cacheWrite + all.cacheRead,
+    sessions: all.sessions,
+    prompts: all.prompts,
+    families: percentRows(famItems),
+  };
 }
 
-export function computeAiWeek(turns: AiTurn[], prompts: AiPrompt[], now: Date = new Date()): Stats["aiWeek"] {
-  const weekAgoMs = now.getTime() - 7 * 86_400_000;
-  const inWeek = (ts: string) => {
-    const t = new Date(ts).getTime();
-    return t >= weekAgoMs && t <= now.getTime();
-  };
-
-  const weekTurns = turns.filter((t) => inWeek(t.timestamp));
-  const weekPrompts = prompts.filter((p) => inWeek(p.timestamp));
-
-  const freshInputTokens = sum(weekTurns, (t) => t.freshInputTokens);
-  const cacheCreationTokens = sum(weekTurns, (t) => t.cacheCreationTokens);
-  const cacheReadTokens = sum(weekTurns, (t) => t.cacheReadTokens);
-  const outputTokens = sum(weekTurns, (t) => t.outputTokens);
-  const totalInputTokens = freshInputTokens + cacheCreationTokens + cacheReadTokens;
-  const totalTokens = totalInputTokens + outputTokens;
-
-  const sessions = new Set([...weekTurns.map((t) => t.sessionId), ...weekPrompts.map((p) => p.sessionId)]).size;
-
-  const byFamily = new Map<string, number>();
-  for (const t of weekTurns) {
-    const tokens = t.freshInputTokens + t.cacheCreationTokens + t.cacheReadTokens + t.outputTokens;
-    byFamily.set(t.family, (byFamily.get(t.family) ?? 0) + tokens);
+export function claudeAllTimeExtras(history: History): Omit<Stats["claudeAllTime"], keyof AiBlock> {
+  const keys = Object.keys(history.days).filter((k) => history.days[k]["claude-code"]).sort();
+  let sessions = 0;
+  let prompts = 0;
+  let longest = 0;
+  const byHour = Array(24).fill(0);
+  for (const k of keys) {
+    const a = history.days[k]["claude-code"]!.all;
+    sessions += a.sessions;
+    prompts += a.prompts;
+    longest = Math.max(longest, a.longestSessionMinutes);
+    a.promptsByHour.forEach((n, h) => (byHour[h] += n));
   }
-  const maxFamily = Math.max(0, ...byFamily.values());
-  const families = [...byFamily.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([family, tokens]) => ({
-      family,
-      tokens,
-      bar: blockBar(tokens, maxFamily),
-      percent: totalTokens > 0 ? round1((tokens / totalTokens) * 100) : 0,
-    }));
-
+  const maxHourCount = Math.max(...byHour);
   return {
-    freshInputTokens,
-    cacheCreationTokens,
-    cacheReadTokens,
-    outputTokens,
-    totalInputTokens,
-    totalTokens,
-    sessions,
-    prompts: weekPrompts.length,
-    families,
+    avgPromptsPerSession: sessions > 0 ? Math.round((prompts / sessions) * 10) / 10 : null,
+    longestSessionMinutes: sessions > 0 ? longest : null,
+    mostActiveHour: maxHourCount > 0 ? byHour.indexOf(maxHourCount) : null,
+    firstDay: keys[0] ?? null,
   };
 }
 
-export function buildStats(input: {
-  turns: AiTurn[];
-  prompts: AiPrompt[];
-  commits: CommitRecord[];
-  languages: LanguageTotals;
-  dailyCommitCounts: Map<string, number>;
-  now?: Date;
-}): Stats {
-  const now = input.now ?? new Date();
-  return {
-    generatedAt: now.toISOString(),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    aiWeek: computeAiWeek(input.turns, input.prompts, now),
-    builderProfile: computeBuilderProfile(input.commits, input.prompts),
-    languages: computeLanguagePercents(input.languages),
-    streak: computeStreaks(input.dailyCommitCounts, now),
-    commitsPerDay: computeCommitsPerDay(input.dailyCommitCounts, now),
+export function topTools(history: History, n = 8): Stats["topTools"] {
+  const counts = new Map<string, number>();
+  for (const d of Object.values(history.days)) {
+    for (const [name, c] of Object.entries(d["claude-code"]?.all.tools ?? {})) counts.set(name, (counts.get(name) ?? 0) + c);
+  }
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const top = sorted.slice(0, n).map(([label, value]) => ({ label, value }));
+  const rest = sorted.slice(n);
+  if (rest.length > 0) top.push({ label: `Other (${rest.length} tools)`, value: rest.reduce((a, [, c]) => a + c, 0) });
+  return { totalCalls: sorted.reduce((a, [, c]) => a + c, 0), rows: percentRows(top) };
+}
+
+/** Prompts per New York day across both sources. */
+export function promptsByDay(history: History): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, d] of Object.entries(history.days)) {
+    const n = (d["claude-code"]?.all.prompts ?? 0) + (d.codex?.all.prompts ?? 0);
+    if (n > 0) out[k] = n;
+  }
+  return out;
+}
+
+/** Commits (exact timestamps) + AI prompts (history, by New York hour), bucketed in New York time. */
+export function builderProfile(commits: CommitRecord[], history: History): Stats["builderProfile"] {
+  const buckets = new Map<string, number>(TIME_BUCKET_ORDER.map((b) => [b, 0]));
+  const weekdays = new Map<string, number>(WEEKDAY_ORDER.map((w) => [w, 0]));
+  const add = (key: string, hour: number, n: number) => {
+    const b = timeBucketOfHour(hour);
+    buckets.set(b, buckets.get(b)! + n);
+    const w = weekdayName(key);
+    weekdays.set(w, weekdays.get(w)! + n);
   };
+
+  for (const c of commits) add(dateKey(c.timestamp), hourOf(c.timestamp), 1);
+  let promptEvents = 0;
+  for (const [k, d] of Object.entries(history.days)) {
+    for (const src of ["claude-code", "codex"] as Source[]) {
+      d[src]?.all.promptsByHour.forEach((n, h) => {
+        if (n > 0) {
+          add(k, h, n);
+          promptEvents += n;
+        }
+      });
+    }
+  }
+
+  const timeRows = percentRows(TIME_BUCKET_ORDER.map((label) => ({ label, value: buckets.get(label)! })));
+  const dayRows = percentRows(WEEKDAY_ORDER.map((label) => ({ label, value: weekdays.get(label)! })));
+  const total = commits.length + promptEvents;
+  let headline = "Not enough data yet to say what kind of builder I am.";
+  if (total > 0) {
+    const top = timeRows.reduce((m, r) => (r.value > m.value ? r : m));
+    const day = dayRows.reduce((m, r) => (r.value > m.value ? r : m));
+    headline = `I'm ${article(top.label)} ${top.label} builder, most active on ${day.label}`;
+  }
+  return { timeBuckets: timeRows, weekdays: dayRows, headline, commitEvents: commits.length, promptEvents };
+}
+
+/** Languages under the threshold are grouped into "Other". */
+export function languageRows(totals: LanguageTotals, thresholdPercent = 1): Row[] {
+  const total = Object.values(totals).reduce((a, b) => a + b, 0);
+  if (total === 0) return [];
+  const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const kept = sorted.filter(([, b]) => (b / total) * 100 >= thresholdPercent).map(([label, value]) => ({ label, value }));
+  const otherBytes = sorted.filter(([, b]) => (b / total) * 100 < thresholdPercent).reduce((a, [, b]) => a + b, 0);
+  if (otherBytes > 0) kept.push({ label: "Other", value: otherBytes });
+  return percentRows(kept);
+}
+
+export function weekDays(todayKey: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => addDays(todayKey, i - 6));
 }

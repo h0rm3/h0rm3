@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseClaudeCode } from "../src/parsers/claudeCode.js";
+import { aggregateDays } from "../src/history.js";
 
 const usage = (output: number) => ({ input_tokens: 10, cache_creation_input_tokens: 100, cache_read_input_tokens: 1000, output_tokens: output });
 
@@ -91,6 +92,23 @@ test("tool_use blocks are counted once per id, MCP tools collapsed", async () =>
   const logs = await parseClaudeCode(fixture());
   const names = logs.tools.map((t) => t.name).sort();
   assert.deepEqual(names, ["Bash", "MCP", "Read"]);
+});
+
+test("Agent SDK runs keep their tokens but add no prompts or sessions", async () => {
+  const root = fixture();
+  const sdk = [
+    { type: "user", uuid: "x1", timestamp: "2026-09-30T16:00:00.000Z", sessionId: "sdk1", entrypoint: "sdk-ts", message: { role: "user", content: "plugin prompt" } },
+    { type: "assistant", timestamp: "2026-09-30T16:00:01.000Z", sessionId: "sdk1", entrypoint: "sdk-ts", requestId: "r9", message: { id: "m9", model: "claude-haiku-4-5", usage: usage(3), content: [] } },
+  ];
+  mkdirSync(path.join(root, "plugin-proj"), { recursive: true });
+  writeFileSync(path.join(root, "plugin-proj", "sdk1.jsonl"), sdk.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  const logs = await parseClaudeCode(root);
+  assert.equal(logs.prompts.length, 2);
+  assert.ok(logs.messages.some((m) => m.sessionId === "sdk1" && m.output === 3));
+  assert.equal(logs.sessions.find((s) => s.sessionId === "sdk1")?.automated, true);
+  const days = aggregateDays("claude-code", logs);
+  assert.equal(days["2026-09-30"].all.sessions, 1); // only the interactive session s1
+  assert.equal(days["2026-09-30"].families.Haiku.output, 3);
 });
 
 test("asOf cutoff drops later records", async () => {

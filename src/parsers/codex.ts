@@ -72,7 +72,7 @@ export async function parseCodex(rootDir = DEFAULT_CODEX_DIR, asOf?: Date): Prom
         }
       }
     }
-    if (span.start) sessions.push({ source: "codex", sessionId, start: span.start, end: span.end });
+    if (span.start) sessions.push({ source: "codex", sessionId, start: span.start, end: span.end, automated: false });
   }
 
   const promptList = [...prompts.values()];

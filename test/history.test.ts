@@ -15,7 +15,7 @@ const logs: ParsedLogs = {
     { source: "claude-code", timestamp: "2026-10-01T01:29:00Z", sessionId: "s1", family: "Opus" },
   ],
   tools: [{ timestamp: "2026-09-30T14:00:00Z", name: "Bash", sessionId: "s1" }],
-  sessions: [{ source: "claude-code", sessionId: "s1", start: "2026-09-30T13:59:00Z", end: "2026-10-01T01:30:00Z" }],
+  sessions: [{ source: "claude-code", sessionId: "s1", start: "2026-09-30T13:59:00Z", end: "2026-10-01T01:30:00Z", automated: false }],
 };
 
 test("aggregates per New York day, session counted once on its start day", () => {

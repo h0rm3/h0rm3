@@ -34,6 +34,7 @@ export interface SessionSpan {
   sessionId: string;
   start: string;
   end: string;
+  automated: boolean; // Agent SDK run (e.g. a plugin's background agent), not an interactive session
 }
 
 export interface ParsedLogs {

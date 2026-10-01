@@ -49,7 +49,7 @@ export function aggregateDays(source: Source, logs: ParsedLogs): Record<string, 
 
   for (const s of logs.sessions) {
     const families = sessionFamilies.get(s.sessionId);
-    if (!families) continue; // no model usage at all (e.g. only a slash command) -> not a session
+    if (!families || s.automated) continue; // no model usage, or a programmatic SDK run -> not a session
     const sd = day(dateKey(s.start));
     sd.all.sessions++;
     for (const f of families) fam(sd, f).sessions++;

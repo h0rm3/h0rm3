@@ -265,9 +265,12 @@ async function censusSection(): Promise<string> {
     ...rows.map((r) => `| ${r.source} | \`${r.model}\` | ${r.family} | ${fmt(r.messages)} | ${fmt(r.freshInput)} | ${fmt(r.cacheWrite)} | ${fmt(r.cacheRead)} | ${fmt(r.output)} | ${r.first} | ${r.last} |`),
   ];
   const side = c.messages.filter((m) => m.sidechain).length;
+  const automated = new Set(c.sessions.filter((s) => s.automated).map((s) => s.sessionId));
+  const autoMsgs = c.messages.filter((m) => automated.has(m.sessionId) && m.model !== "<synthetic>");
+  const autoTokens = autoMsgs.reduce((a, m) => a + m.freshInput + m.cacheWrite + m.cacheRead + m.output, 0);
   lines.push(
     "",
-    `Claude Code: ${fmt(c.messages.length)} unique responses (${fmt(side)} from subagents/sidechains), ${fmt(c.prompts.length)} human prompts, ${fmt(c.tools.length)} tool calls, ${fmt(c.sessions.length)} session ids. Codex: ${fmt(x.messages.length)} usage records, ${fmt(x.prompts.length)} prompts, ${fmt(x.sessions.length)} session(s).`,
+    `Claude Code: ${fmt(c.messages.length)} unique responses (${fmt(side)} from subagents/sidechains), ${fmt(c.prompts.length)} human prompts, ${fmt(c.tools.length)} tool calls, ${fmt(c.sessions.length)} session ids, of which ${fmt(automated.size)} are Agent SDK runs (${fmt(autoMsgs.length)} responses, ${fmt(autoTokens)} tokens; tokens counted, prompts/sessions not). Codex: ${fmt(x.messages.length)} usage records, ${fmt(x.prompts.length)} prompts, ${fmt(x.sessions.length)} session(s).`,
     "`<synthetic>` rows are Claude Code placeholder responses with zero usage; they are listed here and excluded from all stats.",
   );
   return lines.join("\n");
@@ -278,6 +281,7 @@ const JUDGMENT_CALLS = [
   "**This week** = the 7 New York calendar days ending today, matching the daily granularity of `data/history.json`.",
   "**Sessions** are counted once, on the New York day of their first record, and only if they produced at least one model response. \"Sessions this week\" therefore means sessions started this week. Subagent transcripts carry their parent's `sessionId`, so they are not extra sessions.",
   "**Prompts** = human-typed user turns. Excluded: tool results, sidechain/subagent turns (written by the parent model), `isMeta` turns, and system-injected text starting with `<task-notification`, `<command-`, `<local-command-` or `[Request interrupted`. `<pasted_content>` turns count (they are the user's pasted prompt).",
+  "**Agent SDK runs** (`entrypoint: \"sdk-ts\"`, e.g. the claude-mem plugin's background observer agent) are recorded in ~/.claude/projects. Their tokens are real usage and are counted; their user turns are machine-written, so they are not counted as prompts, and they are not counted as sessions. Found during QC: before this fix they inflated prompts and sessions, so data/history.json (not yet published) was rebuilt from scratch.",
   "**Dedupe.** Responses keyed by `message.id` + `requestId`; streamed duplicate lines are merged with a per-field max (verified: only `output_tokens` changes between duplicates) and the earliest timestamp. Tool calls deduped by `tool_use` id, prompts by entry `uuid`, so lines copied into resumed-session files are not double counted.",
   "**MCP tools** are collapsed into a single `MCP` bucket because their names reveal which services are connected.",
   "**Top Tools** counts Claude Code `tool_use` blocks, all-time (from history), top 8 plus an `Other (N tools)` row so percentages are of all calls and sum to 100. Codex `function_call`s are not `tool_use` blocks and are excluded.",

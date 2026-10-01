@@ -77,12 +77,16 @@ export async function parseClaudeCode(rootDir = DEFAULT_CLAUDE_DIR, asOf?: Date)
       if (!ts || !sessionId) continue;
       if (cutoff && ts > cutoff) continue;
 
+      // Agent SDK runs (entrypoint "sdk-*") are programmatic: their tokens are real usage, but their
+      // user turns are machine-written and they are not interactive sessions.
+      const automated = typeof rec.entrypoint === "string" && rec.entrypoint.startsWith("sdk");
       const span = spans.get(sessionId);
       if (span) {
         span.start = earlier(span.start, ts);
         span.end = later(span.end, ts);
+        span.automated ||= automated;
       } else {
-        spans.set(sessionId, { source: "claude-code", sessionId, start: ts, end: ts });
+        spans.set(sessionId, { source: "claude-code", sessionId, start: ts, end: ts, automated });
       }
 
       if (rec.type === "assistant" && rec.message?.usage && rec.message.id) {
@@ -111,7 +115,7 @@ export async function parseClaudeCode(rootDir = DEFAULT_CLAUDE_DIR, asOf?: Date)
             }
           }
         }
-      } else if (isHumanPrompt(rec)) {
+      } else if (!automated && isHumanPrompt(rec)) {
         const id = rec.uuid ?? `${sessionId}|${ts}`;
         if (!prompts.has(id)) prompts.set(id, { source: "claude-code", timestamp: ts, sessionId, family: null });
       }

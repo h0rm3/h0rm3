@@ -4,7 +4,7 @@ import { TZ, dateKey, hourOf } from "./tz.js";
 const zeroTotals = (): Totals => ({ freshInput: 0, cacheWrite: 0, cacheRead: 0, output: 0, sessions: 0, prompts: 0 });
 
 function emptySourceDay(): SourceDay {
-  return { all: { ...zeroTotals(), promptsByHour: Array(24).fill(0), longestSessionMinutes: 0, tools: {} }, families: {} };
+  return { all: { ...zeroTotals(), promptsByHour: Array(24).fill(0), longestActiveSessionMinutes: 0, tools: {} }, families: {} };
 }
 
 export function emptyHistory(): History {
@@ -53,8 +53,7 @@ export function aggregateDays(source: Source, logs: ParsedLogs): Record<string, 
     const sd = day(dateKey(s.start));
     sd.all.sessions++;
     for (const f of families) fam(sd, f).sessions++;
-    const minutes = Math.floor((Date.parse(s.end) - Date.parse(s.start)) / 60_000);
-    sd.all.longestSessionMinutes = Math.max(sd.all.longestSessionMinutes, minutes);
+    sd.all.longestActiveSessionMinutes = Math.max(sd.all.longestActiveSessionMinutes, s.activeMinutes);
   }
 
   return days;
@@ -86,7 +85,8 @@ function mergeSourceDay(a: SourceDay | undefined, b: SourceDay | undefined): Sou
     all: {
       ...maxTotals(a?.all, b?.all),
       promptsByHour: Array.from({ length: 24 }, (_, h) => Math.max(a?.all.promptsByHour[h] ?? 0, b?.all.promptsByHour[h] ?? 0)),
-      longestSessionMinutes: Math.max(a?.all.longestSessionMinutes ?? 0, b?.all.longestSessionMinutes ?? 0),
+      // Only the active-time field is carried; the old wall-clock `longestSessionMinutes` is dropped on merge.
+      longestActiveSessionMinutes: Math.max(a?.all.longestActiveSessionMinutes ?? 0, b?.all.longestActiveSessionMinutes ?? 0),
       tools: sortedKeys(tools),
     },
     families: sortedKeys(families),

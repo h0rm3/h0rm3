@@ -34,6 +34,7 @@ export interface SessionSpan {
   sessionId: string;
   start: string;
   end: string;
+  activeMinutes: number; // time between events, ignoring idle gaps over 30 minutes
   automated: boolean; // Agent SDK run (e.g. a plugin's background agent), not an interactive session
 }
 
@@ -66,7 +67,7 @@ export interface Totals {
 export interface SourceDay {
   all: Totals & {
     promptsByHour: number[]; // 24 buckets, New York hour
-    longestSessionMinutes: number; // among sessions started this day
+    longestActiveSessionMinutes: number; // among sessions started this day, idle gaps > 30 min excluded
     tools: Record<string, number>;
   };
   families: Record<string, Totals>;
@@ -109,7 +110,7 @@ export interface Stats {
   claudeWeek: AiBlock;
   claudeAllTime: AiBlock & {
     avgPromptsPerSession: number | null;
-    longestSessionMinutes: number | null;
+    longestActiveSessionMinutes: number | null;
     mostActiveHour: number | null;
     firstDay: string | null;
   };

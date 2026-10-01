@@ -44,7 +44,7 @@ export function buildStats(input: {
     languages: languageRows(github.languages),
     streak: computeStreaks(commitDays, today),
     commitsPerDay: series(last90, commitDays),
-    promptsPerDay: series(last90, promptsByDay(history)),
+    promptsPerDay: series(last90, promptsByDay(history, "claude-code")),
     commitDays,
     heatmap: {
       days: github.heatmap.days,

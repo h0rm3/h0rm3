@@ -18,6 +18,17 @@ export function weekdayName(key: string): string {
   return WEEKDAY_ORDER[(weekdayOfKey(key) + 6) % 7];
 }
 
+/** Active time: sum of gaps between consecutive events, skipping any gap longer than `maxGapMinutes` (idle). */
+export function activeMinutes(timestamps: string[], maxGapMinutes = 30): number {
+  const t = timestamps.map((s) => Date.parse(s)).sort((a, b) => a - b);
+  let ms = 0;
+  for (let i = 1; i < t.length; i++) {
+    const gap = t[i] - t[i - 1];
+    if (gap <= maxGapMinutes * 60_000) ms += gap;
+  }
+  return Math.floor(ms / 60_000);
+}
+
 export function article(word: string): "a" | "an" {
   return /^[aeiou]/i.test(word) ? "an" : "a";
 }
@@ -126,13 +137,13 @@ export function claudeAllTimeExtras(history: History): Omit<Stats["claudeAllTime
     const a = history.days[k]["claude-code"]!.all;
     sessions += a.sessions;
     prompts += a.prompts;
-    longest = Math.max(longest, a.longestSessionMinutes);
+    longest = Math.max(longest, a.longestActiveSessionMinutes ?? 0);
     a.promptsByHour.forEach((n, h) => (byHour[h] += n));
   }
   const maxHourCount = Math.max(...byHour);
   return {
     avgPromptsPerSession: sessions > 0 ? Math.round((prompts / sessions) * 10) / 10 : null,
-    longestSessionMinutes: sessions > 0 ? longest : null,
+    longestActiveSessionMinutes: sessions > 0 ? longest : null,
     mostActiveHour: maxHourCount > 0 ? byHour.indexOf(maxHourCount) : null,
     firstDay: keys[0] ?? null,
   };
@@ -150,11 +161,11 @@ export function topTools(history: History, n = 8): Stats["topTools"] {
   return { totalCalls: sorted.reduce((a, [, c]) => a + c, 0), rows: percentRows(top) };
 }
 
-/** Prompts per New York day across both sources. */
-export function promptsByDay(history: History): Record<string, number> {
+/** Prompts per New York day for one source. */
+export function promptsByDay(history: History, source: Source): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [k, d] of Object.entries(history.days)) {
-    const n = (d["claude-code"]?.all.prompts ?? 0) + (d.codex?.all.prompts ?? 0);
+    const n = d[source]?.all.prompts ?? 0;
     if (n > 0) out[k] = n;
   }
   return out;

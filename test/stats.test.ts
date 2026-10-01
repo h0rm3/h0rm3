@@ -48,8 +48,8 @@ test("weekly totals never exceed all-time totals", () => {
     prompts: [],
     tools: [],
     sessions: [
-      { source: "claude-code", sessionId: "2026-01-01T15:00:00Z", start: "2026-01-01T15:00:00Z", end: "2026-01-01T15:00:00Z", automated: false },
-      { source: "claude-code", sessionId: "2026-09-30T15:00:00Z", start: "2026-09-30T15:00:00Z", end: "2026-09-30T15:00:00Z", automated: false },
+      { source: "claude-code", sessionId: "2026-01-01T15:00:00Z", start: "2026-01-01T15:00:00Z", end: "2026-01-01T15:00:00Z", activeMinutes: 0, automated: false },
+      { source: "claude-code", sessionId: "2026-09-30T15:00:00Z", start: "2026-09-30T15:00:00Z", end: "2026-09-30T15:00:00Z", activeMinutes: 0, automated: false },
     ],
   };
   const h = mergeHistory(emptyHistory(), { "claude-code": aggregateDays("claude-code", logs) });

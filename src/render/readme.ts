@@ -53,7 +53,7 @@ function renderAllTime(b: Stats["claudeAllTime"]): string {
   const lines = aiHeader(b);
   const extras: string[] = [];
   if (b.avgPromptsPerSession !== null) extras.push(`${b.avgPromptsPerSession.toFixed(1)} prompts/session avg`);
-  if (b.longestSessionMinutes !== null) extras.push(`longest session span ${duration(b.longestSessionMinutes)}`);
+  if (b.longestActiveSessionMinutes !== null) extras.push(`longest session ${duration(b.longestActiveSessionMinutes)} active`);
   if (b.mostActiveHour !== null) extras.push(`busiest hour ${String(b.mostActiveHour).padStart(2, "0")}:00 ET`);
   if (extras.length) lines.push(`⏱️ ${extras.join(" · ")}`);
   if (b.firstDay) lines.push(`📅 since ${longDate(b.firstDay)}`);

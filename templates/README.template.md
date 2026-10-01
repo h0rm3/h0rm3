@@ -37,6 +37,7 @@
   <img src="./assets/github-stats.svg" width="49%" />
   <img src="./assets/top-repos.svg" width="49%" />
 </p>
+<p align="right"><sub>public repos only</sub></p>
 
 <p align="center">
 {{BADGES}}

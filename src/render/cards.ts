@@ -143,7 +143,7 @@ export function renderCommits(data: Stats["commitsPerDay"]): string {
 
 export function renderAiActivity(data: Stats["promptsPerDay"]): string {
   const total = data.reduce((a, d) => a + d.count, 0);
-  return lineChart("AI Prompts per Day", `${fmt(total)} prompts in the last 90 days`, data);
+  return lineChart("Claude Code Prompts per Day", `${fmt(total)} prompts in the last 90 days`, data);
 }
 
 export function renderGitHubStats(g: Stats["github"]): string {

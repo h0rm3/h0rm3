@@ -5,6 +5,7 @@ import os from "node:os";
 import type { AiMessage, AiPrompt, ParsedLogs, SessionSpan } from "../types.js";
 import { modelFamily } from "../normalize.js";
 import { attributePromptFamilies, findJsonl } from "./claudeCode.js";
+import { activeMinutes } from "../metrics.js";
 
 export const DEFAULT_CODEX_DIR = path.join(os.homedir(), ".codex", "sessions");
 
@@ -24,6 +25,7 @@ export async function parseCodex(rootDir = DEFAULT_CODEX_DIR, asOf?: Date): Prom
     let model = "unknown";
     let prev = { input: 0, cached: 0, output: 0 };
     const span = { start: "", end: "" };
+    const times: string[] = [];
 
     const rl = createInterface({ input: createReadStream(file, { encoding: "utf8" }), crlfDelay: Infinity });
     for await (const line of rl) {
@@ -38,6 +40,7 @@ export async function parseCodex(rootDir = DEFAULT_CODEX_DIR, asOf?: Date): Prom
       if (!ts || (cutoff && ts > cutoff)) continue;
       if (!span.start || ts < span.start) span.start = ts;
       if (!span.end || ts > span.end) span.end = ts;
+      times.push(ts);
 
       if (rec.type === "session_meta" && rec.payload?.session_id) {
         sessionId = rec.payload.session_id;
@@ -72,7 +75,7 @@ export async function parseCodex(rootDir = DEFAULT_CODEX_DIR, asOf?: Date): Prom
         }
       }
     }
-    if (span.start) sessions.push({ source: "codex", sessionId, start: span.start, end: span.end, automated: false });
+    if (span.start) sessions.push({ source: "codex", sessionId, start: span.start, end: span.end, activeMinutes: activeMinutes(times), automated: false });
   }
 
   const promptList = [...prompts.values()];

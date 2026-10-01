@@ -5,6 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import type { AiMessage, AiPrompt, ParsedLogs, SessionSpan, ToolCall } from "../types.js";
 import { modelFamily } from "../normalize.js";
+import { activeMinutes } from "../metrics.js";
 
 export const DEFAULT_CLAUDE_DIR = path.join(os.homedir(), ".claude", "projects");
 
@@ -61,6 +62,7 @@ export async function parseClaudeCode(rootDir = DEFAULT_CLAUDE_DIR, asOf?: Date)
   const tools = new Map<string, ToolCall>();
   const prompts = new Map<string, AiPrompt>();
   const spans = new Map<string, SessionSpan>();
+  const eventTimes = new Map<string, Set<string>>(); // a Set, so lines copied into resumed-session files don't add time
 
   for (const file of files) {
     const rl = createInterface({ input: createReadStream(file, { encoding: "utf8" }), crlfDelay: Infinity });
@@ -80,13 +82,14 @@ export async function parseClaudeCode(rootDir = DEFAULT_CLAUDE_DIR, asOf?: Date)
       // Agent SDK runs (entrypoint "sdk-*") are programmatic: their tokens are real usage, but their
       // user turns are machine-written and they are not interactive sessions.
       const automated = typeof rec.entrypoint === "string" && rec.entrypoint.startsWith("sdk");
+      (eventTimes.get(sessionId) ?? eventTimes.set(sessionId, new Set()).get(sessionId)!).add(ts);
       const span = spans.get(sessionId);
       if (span) {
         span.start = earlier(span.start, ts);
         span.end = later(span.end, ts);
         span.automated ||= automated;
       } else {
-        spans.set(sessionId, { source: "claude-code", sessionId, start: ts, end: ts, automated });
+        spans.set(sessionId, { source: "claude-code", sessionId, start: ts, end: ts, activeMinutes: 0, automated });
       }
 
       if (rec.type === "assistant" && rec.message?.usage && rec.message.id) {
@@ -122,6 +125,7 @@ export async function parseClaudeCode(rootDir = DEFAULT_CLAUDE_DIR, asOf?: Date)
     }
   }
 
+  for (const span of spans.values()) span.activeMinutes = activeMinutes([...(eventTimes.get(span.sessionId) ?? [])]);
   const msgList = [...messages.values()];
   attributePromptFamilies([...prompts.values()], msgList);
   return { messages: msgList, prompts: [...prompts.values()], tools: [...tools.values()], sessions: [...spans.values()] };

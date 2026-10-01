@@ -189,7 +189,7 @@ async function checkSanity(stats: Stats) {
   if (tb !== wd || tb !== bp.commitEvents + bp.promptEvents) fails.push(`builder profile totals differ: ${tb} / ${wd} / ${bp.commitEvents + bp.promptEvents}`);
 
   const prompts90 = stats.promptsPerDay.reduce((s, d) => s + d.count, 0);
-  if (prompts90 > a.prompts + stats.codexAllTime.prompts) fails.push(`90-day prompts ${prompts90} exceed all-time prompts`);
+  if (prompts90 > a.prompts) fails.push(`90-day Claude Code prompts ${prompts90} exceed all-time Claude Code prompts ${a.prompts}`);
   const commits90 = stats.commitsPerDay.reduce((s, d) => s + d.count, 0);
   if (commits90 > stats.streak.totalCommits) fails.push(`90-day commits ${commits90} exceed total ${stats.streak.totalCommits}`);
   if (stats.topRepos.reduce((s, r) => s + r.commits, 0) > commits90) fails.push("top repos exceed 90-day commits");
@@ -285,10 +285,10 @@ const JUDGMENT_CALLS = [
   "**Dedupe.** Responses keyed by `message.id` + `requestId`; streamed duplicate lines are merged with a per-field max (verified: only `output_tokens` changes between duplicates) and the earliest timestamp. Tool calls deduped by `tool_use` id, prompts by entry `uuid`, so lines copied into resumed-session files are not double counted.",
   "**MCP tools** are collapsed into a single `MCP` bucket because their names reveal which services are connected.",
   "**Top Tools** counts Claude Code `tool_use` blocks, all-time (from history), top 8 plus an `Other (N tools)` row so percentages are of all calls and sum to 100. Codex `function_call`s are not `tool_use` blocks and are excluded.",
-  "**Claude Code blocks contain Claude Code data only.** Codex usage (1 session, `gpt-5.5`) is not labelled as Claude Code; it is included in the AI prompts/day chart, the builder profile, and `data/stats.json` (`codexAllTime`).",
+  "**Claude Code blocks and the \"Claude Code Prompts per Day\" chart contain Claude Code data only.** Codex usage (1 session, `gpt-5.5`) is not labelled as Claude Code; it is included in the builder profile and `data/stats.json` (`codexAllTime`).",
   "**Codex tokens**: OpenAI `input_tokens` include cached tokens, so fresh = input − cached, cache read = cached, cache write = 0 (Codex doesn't report cache writes). Usage comes from deltas of the cumulative `total_token_usage`, so repeated snapshots never double count.",
   "**History merge** is a field-wise max per day/source/family: idempotent, order-independent, and days whose logs were deleted keep their values. Trade-off: if parsing is ever changed so numbers legitimately go down, those days must be removed from history while their logs still exist (documented in README-dev.md).",
-  "**Session stats**: average prompts/session = all-time prompts ÷ all-time sessions; longest session = wall-clock span from first to last record (includes idle time, so it's labelled \"span\"); busiest hour = most prompts by New York hour, ties go to the earliest hour.",
+  "**Session stats**: average prompts/session = all-time prompts ÷ all-time sessions; longest session = active time, the sum of gaps between consecutive records in the session (subagents included, duplicate timestamps collapsed), skipping any gap over 30 minutes (a gap of exactly 30 counts); busiest hour = most prompts by New York hour, ties go to the earliest hour. History stores this as `longestActiveSessionMinutes`; the old wall-clock field is dropped on merge.",
   "**Prompt → model family**: a prompt is attributed to the family of the next main-chain response in its session; prompts with no response count in totals only.",
   "**Languages** sum bytes across all owned repos including private ones (only aggregate percentages are published); under 1% is grouped as Other.",
   "**GitHub stats**: stars = stargazers on owned public non-fork repos; PRs opened/merged and issues opened are all-time counts for the account (any repo the token can see, counts only); public repo count includes forks; account age is shown in days rather than an approximate years figure; contributions this year start at Jan 1 00:00 New York time.",
@@ -304,7 +304,7 @@ const JUDGMENT_CALLS = [
 ];
 
 const NOT_PRODUCED = [
-  "**Cursor usage**: Cursor keeps no locally readable token/usage data (only a conversation-search index), so it is not a source.",
+  "**Cursor**: its global `state.vscdb` stores per-message `createdAt` timestamps (174 countable prompts, see DIAGNOSIS.md) but no token counts or model names. It is not yet a source; adding prompt counts is a separate change awaiting approval.",
   "**Codex cache writes**: not reported in Codex logs; shown as 0 in data, not estimated.",
   "**Codex tool usage in Top Tools**: Codex `function_call`s aren't `tool_use` blocks; excluded rather than mixed in.",
   "**New York re-bucketing of GitHub daily counts**: impossible without per-commit timestamps (see judgment calls).",

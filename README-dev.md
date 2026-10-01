@@ -62,7 +62,8 @@ from `data/history.json` while their logs still exist, then re-run.
    (`aggregateDays("your-tool", logs)`).
 3. Add family substrings to `src/normalize.ts` if needed, and decide where it should be displayed.
 
-Cursor has no locally readable token/usage data, so it is not a source.
+Cursor is not a source yet. Its global `state.vscdb` (`cursorDiskKV`, keys `bubbleId:*`) has per-message
+`createdAt` timestamps (type 1 = user), but no token counts or model names.
 
 ## Changing colors
 

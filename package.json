@@ -7,6 +7,7 @@
   "scripts": {
     "update": "tsx scripts/update.ts",
     "update:dry": "tsx scripts/update.ts --dry-run",
+    "qc": "tsx scripts/qc.ts",
     "test": "tsx --test test/*.test.ts"
   },
   "devDependencies": {

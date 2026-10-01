@@ -95,7 +95,7 @@ const COMMITS_BY_REPO = `
     }
   }`;
 
-async function commitContributions(token: string, username: string, createdAt: string) {
+async function commitContributions(token: string, username: string, createdAt: string, now: Date) {
   const commitDays: Record<string, number> = {};
   const publicRepoDays: Record<string, Record<string, number>> = {};
   const add = (repo: any, nodes: { occurredAt: string; commitCount: number }[]) => {
@@ -111,9 +111,10 @@ async function commitContributions(token: string, username: string, createdAt: s
   };
 
   const firstYear = new Date(createdAt).getUTCFullYear();
-  const lastYear = new Date().getUTCFullYear();
+  const lastYear = now.getUTCFullYear();
   for (let year = firstYear; year <= lastYear; year++) {
-    const vars = { login: username, from: `${year}-01-01T00:00:00Z`, to: `${year}-12-31T23:59:59Z` };
+    const yearEnd = `${year}-12-31T23:59:59Z`;
+    const vars = { login: username, from: `${year}-01-01T00:00:00Z`, to: year === lastYear && now.toISOString() < yearEnd ? now.toISOString() : yearEnd };
     const data = await graphql(token, COMMITS_BY_REPO, { ...vars, after: null });
     for (const entry of data.user.contributionsCollection.commitContributionsByRepository) {
       add(entry.repository, entry.contributions.nodes);
@@ -227,7 +228,7 @@ export async function fetchGitHubData(token: string, username: string, now: Date
   }
 
   const prof = await profile(token, username);
-  const { commitDays, publicRepoDays } = await commitContributions(token, username, prof.createdAt);
+  const { commitDays, publicRepoDays } = await commitContributions(token, username, prof.createdAt, now);
 
   return {
     languages,

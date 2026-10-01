@@ -2,10 +2,11 @@ import type { Stats } from "../types.js";
 import { cardShell, COLORS, PALETTE, text } from "./theme.js";
 
 export function renderLanguagesSvg(languages: Stats["languages"]): string {
-  const width = 480;
+  const width = 400;
+  const height = 165;
   const barX = 20;
-  const barY = 56;
-  const barHeight = 24;
+  const barY = 44;
+  const barHeight = 18;
   const barWidth = width - 40;
 
   let x = barX;
@@ -18,27 +19,27 @@ export function renderLanguagesSvg(languages: Stats["languages"]): string {
     })
     .join("\n  ");
 
-  const cols = 2;
+  // Fixed card height regardless of how many languages pass the threshold: grow columns, not height.
+  const legendY0 = barY + barHeight + 20;
+  const legendAvailableHeight = height - 10 - legendY0;
+  const rowHeight = 14;
+  const maxRowsPerColumn = Math.max(1, Math.floor(legendAvailableHeight / rowHeight));
+  const cols = Math.max(2, Math.ceil(languages.length / maxRowsPerColumn));
   const colWidth = (width - 40) / cols;
-  const rowHeight = 22;
-  const legendY0 = barY + barHeight + 28;
-  const rows = Math.ceil(languages.length / cols);
 
   const legend = languages
     .map((lang, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
+      const col = Math.floor(i / maxRowsPerColumn);
+      const row = i % maxRowsPerColumn;
       const lx = barX + col * colWidth;
       const ly = legendY0 + row * rowHeight;
       const color = PALETTE[i % PALETTE.length];
-      return `<rect x="${lx}" y="${ly - 10}" width="12" height="12" rx="2" fill="${color}"/>${text(lx + 18, ly, `${lang.name} ${lang.percent.toFixed(1)}%`)}`;
+      return `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="${color}"/>${text(lx + 13, ly, `${lang.name} ${lang.percent.toFixed(1)}%`, { size: 10 })}`;
     })
     .join("\n  ");
 
-  const height = legendY0 + rows * rowHeight + 10;
-
   const body = `
-  <clipPath id="bar-clip"><rect x="${barX}" y="${barY}" width="${barWidth}" height="${barHeight}" rx="6"/></clipPath>
+  <clipPath id="bar-clip"><rect x="${barX}" y="${barY}" width="${barWidth}" height="${barHeight}" rx="5"/></clipPath>
   <g clip-path="url(#bar-clip)">
   ${segments}
   </g>
@@ -48,8 +49,8 @@ export function renderLanguagesSvg(languages: Stats["languages"]): string {
 }
 
 export function renderStreakSvg(streak: Stats["streak"]): string {
-  const width = 480;
-  const height = 150;
+  const width = 400;
+  const height = 165;
   const colWidth = width / 3;
   const stats: [string, number][] = [
     ["Total Commits", streak.totalCommits],
@@ -60,10 +61,10 @@ export function renderStreakSvg(streak: Stats["streak"]): string {
   const body = stats
     .map(([label, value], i) => {
       const cx = colWidth * i + colWidth / 2;
-      const divider = i > 0 ? `<line x1="${colWidth * i}" y1="50" x2="${colWidth * i}" y2="120" stroke="${COLORS.border}"/>` : "";
+      const divider = i > 0 ? `<line x1="${(colWidth * i).toFixed(2)}" y1="50" x2="${(colWidth * i).toFixed(2)}" y2="135" stroke="${COLORS.border}"/>` : "";
       return `${divider}
-  ${text(cx, 90, String(value), { size: 32, weight: 700, fill: COLORS.accent, anchor: "middle" })}
-  ${text(cx, 112, label, { size: 12, anchor: "middle" })}`;
+  ${text(cx, 100, String(value), { size: 30, weight: 700, fill: COLORS.accent, anchor: "middle" })}
+  ${text(cx, 122, label, { size: 11, anchor: "middle" })}`;
     })
     .join("\n  ");
 

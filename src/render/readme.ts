@@ -11,6 +11,10 @@ function formatNumber(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+function pct(p: number): string {
+  return `${p.toFixed(1)}%`;
+}
+
 function renderAiWeekTable(aiWeek: Stats["aiWeek"]): string {
   const lines: string[] = [];
   lines.push(`🔤 ${formatNumber(aiWeek.totalInputTokens)} input tokens · ${formatNumber(aiWeek.outputTokens)} output tokens`);
@@ -19,9 +23,11 @@ function renderAiWeekTable(aiWeek: Stats["aiWeek"]): string {
   if (aiWeek.families.length > 0) {
     lines.push("");
     const nameWidth = Math.max(...aiWeek.families.map((f) => f.family.length)) + 2;
-    for (const f of aiWeek.families) {
-      lines.push(`${f.family.padEnd(nameWidth)}${f.bar}  ${f.percent.toFixed(1).padStart(5)}%  ${formatNumber(f.tokens)} tokens`);
-    }
+    const tokenStrs = aiWeek.families.map((f) => `${formatNumber(f.tokens)} tokens`);
+    const tokenWidth = Math.max(...tokenStrs.map((s) => s.length));
+    aiWeek.families.forEach((f, i) => {
+      lines.push(`${f.family.padEnd(nameWidth)}${tokenStrs[i].padStart(tokenWidth)}  ${f.bar}  ${pct(f.percent).padStart(6)}`);
+    });
   } else {
     lines.push("", "No AI activity recorded in the last 7 days.");
   }
@@ -29,20 +35,28 @@ function renderAiWeekTable(aiWeek: Stats["aiWeek"]): string {
   return "```\n" + lines.join("\n") + "\n```";
 }
 
+function renderHeadline(bp: Stats["builderProfile"]): string {
+  const sub = bp.headline.startsWith("I'm") ? " <sub>(commits + AI prompts on record)</sub>" : "";
+  return `**${bp.headline}**${sub}`;
+}
+
 function renderBuilderProfileTable(bp: Stats["builderProfile"]): string {
-  const lines: string[] = [bp.headline, ""];
+  const bucketLabels = bp.timeBuckets.map((b) => `${TIME_BUCKET_EMOJI[b.bucket]} ${b.bucket}`);
+  const weekdayLabels = bp.weekdays.map((w) => w.weekday);
+  const labelWidth = Math.max(...bucketLabels.map((l) => l.length), ...weekdayLabels.map((l) => l.length)) + 2;
 
-  const bucketWidth = Math.max(...bp.timeBuckets.map((b) => b.bucket.length)) + 5; // + emoji & space & padding
-  for (const b of bp.timeBuckets) {
-    const label = `${TIME_BUCKET_EMOJI[b.bucket]} ${b.bucket}`.padEnd(bucketWidth);
-    lines.push(`${label}${b.bar}  ${b.percent.toFixed(1).padStart(5)}%  ${formatNumber(b.count)}`);
-  }
+  const countStrs = (n: number) => `${formatNumber(n)} events`;
+  const allCounts = [...bp.timeBuckets.map((b) => b.count), ...bp.weekdays.map((w) => w.count)];
+  const countWidth = Math.max(...allCounts.map((c) => countStrs(c).length));
 
+  const lines: string[] = [];
+  bp.timeBuckets.forEach((b, i) => {
+    lines.push(`${bucketLabels[i].padEnd(labelWidth)}${countStrs(b.count).padStart(countWidth)}  ${b.bar}  ${pct(b.percent).padStart(6)}`);
+  });
   lines.push("");
-  const weekdayWidth = Math.max(...bp.weekdays.map((w) => w.weekday.length)) + 2;
-  for (const w of bp.weekdays) {
-    lines.push(`${w.weekday.padEnd(weekdayWidth)}${w.bar}  ${w.percent.toFixed(1).padStart(5)}%  ${formatNumber(w.count)}`);
-  }
+  bp.weekdays.forEach((w, i) => {
+    lines.push(`${weekdayLabels[i].padEnd(labelWidth)}${countStrs(w.count).padStart(countWidth)}  ${w.bar}  ${pct(w.percent).padStart(6)}`);
+  });
 
   return "```\n" + lines.join("\n") + "\n```";
 }
@@ -103,6 +117,7 @@ export function renderReadme(stats: Stats): string {
 
   return template
     .replaceAll("{{AI_WEEK_TABLE}}", renderAiWeekTable(stats.aiWeek))
+    .replaceAll("{{BUILDER_HEADLINE}}", renderHeadline(stats.builderProfile))
     .replaceAll("{{BUILDER_PROFILE_TABLE}}", renderBuilderProfileTable(stats.builderProfile))
     .replaceAll("{{TECH_BADGES}}", renderTechBadges(stats.languages))
     .replaceAll("{{LAST_UPDATED}}", lastUpdated);

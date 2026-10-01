@@ -1,12 +1,16 @@
-<svg width="480" height="140" viewBox="0 0 480 140" xmlns="http://www.w3.org/2000/svg">
-  <rect x="0.5" y="0.5" width="479" height="139" rx="6" fill="#0d1117" stroke="#30363d"/>
+<svg width="400" height="165" viewBox="0 0 400 165" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0.5" y="0.5" width="399" height="164" rx="6" fill="#0d1117" stroke="#30363d"/>
   <text x="20" y="30" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="16" font-weight="600" fill="#a371f7">Languages</text>
   
-  <clipPath id="bar-clip"><rect x="20" y="56" width="440" height="24" rx="6"/></clipPath>
+  <clipPath id="bar-clip"><rect x="20" y="44" width="360" height="18" rx="5"/></clipPath>
   <g clip-path="url(#bar-clip)">
-  <rect x="20.00" y="56" width="419.32" height="24" fill="#a371f7"/>
-  <rect x="439.32" y="56" width="20.68" height="24" fill="#58a6ff"/>
+  <rect x="20.00" y="44" width="343.08" height="18" fill="#a371f7"/>
+  <rect x="363.08" y="44" width="7.20" height="18" fill="#58a6ff"/>
+  <rect x="370.28" y="44" width="3.96" height="18" fill="#3fb950"/>
+  <rect x="374.24" y="44" width="5.40" height="18" fill="#f0883e"/>
   </g>
-  <rect x="20" y="98" width="12" height="12" rx="2" fill="#a371f7"/><text x="38.00" y="108.00" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#c9d1d9" text-anchor="start">TypeScript 95.3%</text>
-  <rect x="240" y="98" width="12" height="12" rx="2" fill="#58a6ff"/><text x="258.00" y="108.00" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#c9d1d9" text-anchor="start">Other 4.7%</text>
+  <rect x="20" y="74" width="8" height="8" rx="2" fill="#a371f7"/><text x="33.00" y="82.00" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#c9d1d9" text-anchor="start">TypeScript 95.3%</text>
+  <rect x="20" y="88" width="8" height="8" rx="2" fill="#58a6ff"/><text x="33.00" y="96.00" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#c9d1d9" text-anchor="start">PLpgSQL 2.0%</text>
+  <rect x="20" y="102" width="8" height="8" rx="2" fill="#3fb950"/><text x="33.00" y="110.00" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#c9d1d9" text-anchor="start">JavaScript 1.1%</text>
+  <rect x="20" y="116" width="8" height="8" rx="2" fill="#f0883e"/><text x="33.00" y="124.00" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10" font-weight="400" fill="#c9d1d9" text-anchor="start">Other 1.5%</text>
 </svg>

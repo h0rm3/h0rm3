@@ -85,7 +85,7 @@ export function computeBuilderProfile(commits: CommitRecord[], prompts: AiPrompt
   return { timeBuckets, weekdays, headline };
 }
 
-export function computeLanguagePercents(totals: LanguageTotals, otherThresholdPercent = 3): Stats["languages"] {
+export function computeLanguagePercents(totals: LanguageTotals, otherThresholdPercent = 1): Stats["languages"] {
   const totalBytes = sum(Object.values(totals), (b) => b);
   if (totalBytes === 0) return [];
 

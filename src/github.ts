@@ -1,215 +1,242 @@
-import type { CommitRecord, LanguageTotals } from "./types.js";
-import { localDateKey } from "./dateUtils.js";
+import type { CommitRecord, HeatmapDay, LanguageTotals } from "./types.js";
+import { addDays, dateKey, weekdayOfKey, zonedTimeToUtc, TZ } from "./tz.js";
 
 const API = "https://api.github.com";
-const GRAPHQL = "https://api.github.com/graphql";
+
+/**
+ * GitHub buckets contribution days on its own clock: day-level commit contributions report
+ * occurredAt = T07:00:00Z / T08:00:00Z, i.e. midnight US Pacific. Day keys from GitHub use this zone.
+ */
+export const GITHUB_DAY_TZ = "America/Los_Angeles";
 
 export interface GitHubData {
   languages: LanguageTotals;
-  commits: CommitRecord[]; // exact per-commit timestamps, deduped by sha, author-matched
-  dailyCommitCounts: Map<string, number>; // YYYY-MM-DD (local) -> pure commit count, from contributionsCollection
+  commits: CommitRecord[]; // exact timestamps, owned repos, all branches, deduped by sha
+  commitDays: Record<string, number>; // GitHub day -> commit contributions (all repos), all time
+  publicRepoDays: Record<string, Record<string, number>>; // public repo -> GitHub day -> commits
+  heatmap: { days: HeatmapDay[]; apiTotal: number; startKey: string };
+  contributionsThisYear: number;
+  profile: {
+    createdAt: string;
+    prsOpened: number;
+    prsMerged: number;
+    issuesOpened: number;
+    starsReceived: number;
+    publicRepos: number;
+  };
+  privateRepoNames: string[]; // for the privacy scan only, never written anywhere
 }
 
-async function gh(token: string, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${API}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...init?.headers,
-    },
-  });
-  if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") {
+function headers(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+}
+
+function rateLimitError(res: Response): Error | null {
+  if ((res.status === 403 || res.status === 429) && res.headers.get("x-ratelimit-remaining") === "0") {
     const reset = new Date(Number(res.headers.get("x-ratelimit-reset")) * 1000);
-    throw new Error(`GitHub REST rate limit exhausted. Resets at ${reset.toISOString()}`);
-  }
-  return res;
-}
-
-function parseNextLink(linkHeader: string | null): string | null {
-  if (!linkHeader) return null;
-  for (const part of linkHeader.split(",")) {
-    const m = part.match(/<([^>]+)>;\s*rel="next"/);
-    if (m) return m[1];
+    return new Error(`GitHub rate limit exhausted, resets at ${reset.toISOString()}`);
   }
   return null;
 }
 
-async function paginateRest(token: string, firstPath: string): Promise<any[]> {
-  const results: any[] = [];
-  let url: string | null = `${API}${firstPath}`;
-  while (url) {
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-    if (res.status === 409 || res.status === 404) break; // empty repo / not found
-    if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") {
-      const reset = new Date(Number(res.headers.get("x-ratelimit-reset")) * 1000);
-      throw new Error(`GitHub REST rate limit exhausted. Resets at ${reset.toISOString()}`);
-    }
-    if (!res.ok) break;
-    const page = await res.json();
-    if (Array.isArray(page)) results.push(...page);
-    url = parseNextLink(res.headers.get("link"));
-  }
-  return results;
-}
-
-async function graphql(token: string, query: string, variables: Record<string, unknown>): Promise<any> {
-  const res = await fetch(GRAPHQL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const json = await res.json();
-  if (json.errors) throw new Error(`GitHub GraphQL error: ${JSON.stringify(json.errors)}`);
-  return json.data;
-}
-
-interface Repo {
-  name: string;
-  owner: { login: string };
-  full_name: string;
-}
-
-async function listOwnedRepos(token: string): Promise<Repo[]> {
-  return paginateRest(token, "/user/repos?affiliation=owner&per_page=100&visibility=all");
-}
-
-async function repoLanguages(token: string, fullName: string): Promise<Record<string, number>> {
-  const res = await gh(token, `/repos/${fullName}/languages`);
-  if (!res.ok) return {};
+async function restJson(token: string, path: string): Promise<any> {
+  const res = await fetch(`${API}${path}`, { headers: headers(token) });
+  const rl = rateLimitError(res);
+  if (rl) throw rl;
+  if (!res.ok) throw new Error(`GitHub REST ${res.status} for ${path.split("?")[0].replace(/\/repos\/[^/]+\/[^/]+/, "/repos/…")}`);
   return res.json();
 }
 
-async function repoBranches(token: string, fullName: string): Promise<string[]> {
-  const branches = await paginateRest(token, `/repos/${fullName}/branches?per_page=100`);
-  return branches.map((b: any) => b.name);
+/** Follows Link rel="next". 404/409 (missing or empty repo) yield an empty list. */
+async function paginate(token: string, firstPath: string): Promise<any[]> {
+  const out: any[] = [];
+  let url: string | null = `${API}${firstPath}`;
+  while (url) {
+    const res: Response = await fetch(url, { headers: headers(token) });
+    const rl = rateLimitError(res);
+    if (rl) throw rl;
+    if (res.status === 404 || res.status === 409) break;
+    if (!res.ok) throw new Error(`GitHub REST ${res.status} while paginating`);
+    const page = await res.json();
+    if (Array.isArray(page)) out.push(...page);
+    const next = (res.headers.get("link") ?? "").split(",").find((p) => p.includes('rel="next"'));
+    url = next ? next.slice(next.indexOf("<") + 1, next.indexOf(">")) : null;
+  }
+  return out;
 }
 
-async function branchCommits(token: string, fullName: string, branch: string, author: string): Promise<CommitRecord[]> {
-  const commits = await paginateRest(
-    token,
-    `/repos/${fullName}/commits?sha=${encodeURIComponent(branch)}&author=${encodeURIComponent(author)}&per_page=100`,
-  );
-  return commits.map((c: any) => ({
-    sha: c.sha as string,
-    repo: fullName,
-    timestamp: c.commit.author.date as string,
-  }));
+async function graphql(token: string, query: string, variables: Record<string, unknown>): Promise<any> {
+  const res = await fetch(`${API}/graphql`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
+  const rl = rateLimitError(res);
+  if (rl) throw rl;
+  const json = await res.json();
+  if (json.errors) throw new Error(`GitHub GraphQL error: ${JSON.stringify(json.errors.map((e: any) => e.message))}`);
+  return json.data;
 }
 
-/** Pure per-day commit counts (not mixed with issues/PRs/reviews) via contributionsCollection, looped one calendar year at a time from account creation to now. */
-async function dailyCommitCountsFromContributions(token: string, username: string): Promise<Map<string, number>> {
-  const userRes = await gh(token, `/users/${username}`);
-  const user = await userRes.json();
-  const createdYear = new Date(user.created_at).getUTCFullYear();
-  const currentYear = new Date().getUTCFullYear();
+const LEVELS: Record<string, number> = { NONE: 0, FIRST_QUARTILE: 1, SECOND_QUARTILE: 2, THIRD_QUARTILE: 3, FOURTH_QUARTILE: 4 };
 
-  const query = `
-    query($login: String!, $from: DateTime!, $to: DateTime!, $after: String) {
-      user(login: $login) {
-        contributionsCollection(from: $from, to: $to) {
-          commitContributionsByRepository(maxRepositories: 100) {
-            repository { nameWithOwner }
-            contributions(first: 100, after: $after) {
-              totalCount
-              pageInfo { hasNextPage endCursor }
-              nodes { occurredAt commitCount }
-            }
+const COMMITS_BY_REPO = `
+  query($login: String!, $from: DateTime!, $to: DateTime!, $after: String) {
+    user(login: $login) {
+      contributionsCollection(from: $from, to: $to) {
+        commitContributionsByRepository(maxRepositories: 100) {
+          repository { nameWithOwner isPrivate owner { login } name }
+          contributions(first: 100, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes { occurredAt commitCount }
           }
         }
       }
-    }`;
+    }
+  }`;
 
-  const daily = new Map<string, number>();
-
-  for (let year = createdYear; year <= currentYear; year++) {
-    const from = `${year}-01-01T00:00:00Z`;
-    const to = `${year}-12-31T23:59:59Z`;
-
-    // Per-repo pagination: each repo's `contributions` connection can independently need more pages.
-    // Track which repos still have more pages; re-issue the query with a shared cursor is not possible
-    // per-repo, so first fetch page 1 for all repos, then follow up individually for any with hasNextPage.
-    const data = await graphql(token, query, { login: username, from, to, after: null });
-    const byRepo = data.user.contributionsCollection.commitContributionsByRepository as any[];
-
-    for (const repoEntry of byRepo) {
-      let nodes = repoEntry.contributions.nodes as { occurredAt: string; commitCount: number }[];
-      let pageInfo = repoEntry.contributions.pageInfo as { hasNextPage: boolean; endCursor: string | null };
-
-      for (const node of nodes) {
-        const key = localDateKey(node.occurredAt);
-        daily.set(key, (daily.get(key) ?? 0) + node.commitCount);
+async function commitContributions(token: string, username: string, createdAt: string) {
+  const commitDays: Record<string, number> = {};
+  const publicRepoDays: Record<string, Record<string, number>> = {};
+  const add = (repo: any, nodes: { occurredAt: string; commitCount: number }[]) => {
+    const label = repo.owner.login.toLowerCase() === username.toLowerCase() ? repo.name : repo.nameWithOwner;
+    for (const n of nodes) {
+      const key = dateKey(n.occurredAt, GITHUB_DAY_TZ);
+      commitDays[key] = (commitDays[key] ?? 0) + n.commitCount;
+      if (!repo.isPrivate) {
+        const r = (publicRepoDays[label] ??= {});
+        r[key] = (r[key] ?? 0) + n.commitCount;
       }
+    }
+  };
 
-      while (pageInfo.hasNextPage) {
-        const repoQuery = `
-          query($login: String!, $from: DateTime!, $to: DateTime!, $after: String) {
-            user(login: $login) {
-              contributionsCollection(from: $from, to: $to) {
-                commitContributionsByRepository(maxRepositories: 100) {
-                  repository { nameWithOwner }
-                  contributions(first: 100, after: $after) {
-                    pageInfo { hasNextPage endCursor }
-                    nodes { occurredAt commitCount }
-                  }
-                }
-              }
-            }
-          }`;
-        const more = await graphql(token, repoQuery, { login: username, from, to, after: pageInfo.endCursor });
-        const repoAgain = (more.user.contributionsCollection.commitContributionsByRepository as any[]).find(
-          (r) => r.repository.nameWithOwner === repoEntry.repository.nameWithOwner,
+  const firstYear = new Date(createdAt).getUTCFullYear();
+  const lastYear = new Date().getUTCFullYear();
+  for (let year = firstYear; year <= lastYear; year++) {
+    const vars = { login: username, from: `${year}-01-01T00:00:00Z`, to: `${year}-12-31T23:59:59Z` };
+    const data = await graphql(token, COMMITS_BY_REPO, { ...vars, after: null });
+    for (const entry of data.user.contributionsCollection.commitContributionsByRepository) {
+      add(entry.repository, entry.contributions.nodes);
+      let page = entry.contributions.pageInfo;
+      while (page.hasNextPage) {
+        const more = await graphql(token, COMMITS_BY_REPO, { ...vars, after: page.endCursor });
+        const same = more.user.contributionsCollection.commitContributionsByRepository.find(
+          (e: any) => e.repository.nameWithOwner === entry.repository.nameWithOwner,
         );
-        if (!repoAgain) break;
-        for (const node of repoAgain.contributions.nodes as { occurredAt: string; commitCount: number }[]) {
-          const key = localDateKey(node.occurredAt);
-          daily.set(key, (daily.get(key) ?? 0) + node.commitCount);
-        }
-        pageInfo = repoAgain.contributions.pageInfo;
+        if (!same) break;
+        add(same.repository, same.contributions.nodes);
+        page = same.contributions.pageInfo;
       }
     }
   }
-
-  return daily;
+  return { commitDays, publicRepoDays };
 }
 
-export async function fetchGitHubData(token: string, username: string): Promise<GitHubData> {
-  const repos = await listOwnedRepos(token);
+/** Last 52 week-columns of GitHub's contribution calendar, ending with the current (partial) week. */
+async function heatmap(token: string, username: string, now: Date) {
+  const today = dateKey(now, GITHUB_DAY_TZ);
+  const sunday = addDays(today, -weekdayOfKey(today));
+  const startKey = addDays(sunday, -51 * 7);
+  const from = zonedTimeToUtc(startKey, 0, GITHUB_DAY_TZ).toISOString();
+  const data = await graphql(
+    token,
+    `query($login: String!, $from: DateTime!, $to: DateTime!) {
+      user(login: $login) { contributionsCollection(from: $from, to: $to) {
+        contributionCalendar { totalContributions weeks { contributionDays { date contributionCount contributionLevel } } }
+      } } }`,
+    { login: username, from, to: now.toISOString() },
+  );
+  const cal = data.user.contributionsCollection.contributionCalendar;
+  const days: HeatmapDay[] = cal.weeks
+    .flatMap((w: any) => w.contributionDays)
+    .map((d: any) => ({ date: d.date, count: d.contributionCount, level: LEVELS[d.contributionLevel] ?? 0 }));
+  return { days, apiTotal: cal.totalContributions as number, startKey };
+}
 
+async function contributionsThisYear(token: string, username: string, now: Date): Promise<number> {
+  const year = Number(dateKey(now).slice(0, 4));
+  const data = await graphql(
+    token,
+    `query($login: String!, $from: DateTime!, $to: DateTime!) {
+      user(login: $login) { contributionsCollection(from: $from, to: $to) { contributionCalendar { totalContributions } } } }`,
+    { login: username, from: zonedTimeToUtc(`${year}-01-01`, 0, TZ).toISOString(), to: now.toISOString() },
+  );
+  return data.user.contributionsCollection.contributionCalendar.totalContributions;
+}
+
+async function profile(token: string, username: string) {
+  const base = await graphql(
+    token,
+    `query($login: String!) { user(login: $login) {
+      createdAt
+      pullRequests { totalCount }
+      merged: pullRequests(states: MERGED) { totalCount }
+      issues { totalCount }
+      publicRepos: repositories(privacy: PUBLIC, ownerAffiliations: OWNER) { totalCount }
+    } }`,
+    { login: username },
+  );
+  let stars = 0;
+  let after: string | null = null;
+  do {
+    const page: any = await graphql(
+      token,
+      `query($login: String!, $after: String) { user(login: $login) {
+        repositories(privacy: PUBLIC, ownerAffiliations: OWNER, isFork: false, first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor } nodes { stargazerCount }
+        } } }`,
+      { login: username, after },
+    );
+    const repos = page.user.repositories;
+    stars += repos.nodes.reduce((a: number, r: any) => a + r.stargazerCount, 0);
+    after = repos.pageInfo.hasNextPage ? repos.pageInfo.endCursor : null;
+  } while (after);
+  const u = base.user;
+  return {
+    createdAt: u.createdAt as string,
+    prsOpened: u.pullRequests.totalCount as number,
+    prsMerged: u.merged.totalCount as number,
+    issuesOpened: u.issues.totalCount as number,
+    starsReceived: stars,
+    publicRepos: u.publicRepos.totalCount as number,
+  };
+}
+
+export async function fetchGitHubData(token: string, username: string, now: Date): Promise<GitHubData> {
+  const repos = await paginate(token, "/user/repos?affiliation=owner&per_page=100&visibility=all");
   const languages: LanguageTotals = {};
   const commits: CommitRecord[] = [];
-  const seenShas = new Set<string>();
+  const seen = new Set<string>();
 
   for (const repo of repos) {
-    const fullName = repo.full_name;
+    const langs: Record<string, number> = await restJson(token, `/repos/${repo.full_name}/languages`).catch(() => ({}));
+    for (const [lang, bytes] of Object.entries(langs)) languages[lang] = (languages[lang] ?? 0) + bytes;
 
-    const langs = await repoLanguages(token, fullName);
-    for (const [lang, bytes] of Object.entries(langs)) {
-      languages[lang] = (languages[lang] ?? 0) + bytes;
-    }
-
-    const branches = await repoBranches(token, fullName);
-    const perBranch = await Promise.all(branches.map((b) => branchCommits(token, fullName, b, username)));
-    for (const list of perBranch) {
+    const branches = await paginate(token, `/repos/${repo.full_name}/branches?per_page=100`);
+    for (const b of branches) {
+      const list = await paginate(
+        token,
+        `/repos/${repo.full_name}/commits?sha=${encodeURIComponent(b.name)}&author=${encodeURIComponent(username)}&until=${encodeURIComponent(now.toISOString())}&per_page=100`,
+      );
       for (const c of list) {
-        if (seenShas.has(c.sha)) continue;
-        seenShas.add(c.sha);
-        commits.push(c);
+        if (seen.has(c.sha)) continue;
+        seen.add(c.sha);
+        commits.push({ sha: c.sha, repo: repo.full_name, timestamp: c.commit.author.date });
       }
     }
   }
 
-  const dailyCommitCounts = await dailyCommitCountsFromContributions(token, username);
+  const prof = await profile(token, username);
+  const { commitDays, publicRepoDays } = await commitContributions(token, username, prof.createdAt);
 
-  return { languages, commits, dailyCommitCounts };
+  return {
+    languages,
+    commits,
+    commitDays,
+    publicRepoDays,
+    heatmap: await heatmap(token, username, now),
+    contributionsThisYear: await contributionsThisYear(token, username, now),
+    profile: prof,
+    privateRepoNames: repos.filter((r: any) => r.private).map((r: any) => r.name as string),
+  };
 }

@@ -1,4 +1,4 @@
-import type { AiBlock, CommitRecord, History, LanguageTotals, Row, Source, Stats, Totals } from "./types.js";
+import type { AiBlock, CommitRecord, HeatmapDay, History, LanguageTotals, Row, Source, Stats, Totals } from "./types.js";
 import { addDays, dateKey, dayDiff, hourOf, weekdayOfKey } from "./tz.js";
 
 export const TIME_BUCKET_ORDER = ["Morning", "Daytime", "Evening", "Night"] as const;
@@ -199,6 +199,17 @@ export function languageRows(totals: LanguageTotals, thresholdPercent = 1): Row[
   const otherBytes = sorted.filter(([, b]) => (b / total) * 100 < thresholdPercent).reduce((a, [, b]) => a + b, 0);
   if (otherBytes > 0) kept.push({ label: "Other", value: otherBytes });
   return percentRows(kept);
+}
+
+/**
+ * Week columns (Sunday-first rows) starting at `startKey`, which must be a Sunday.
+ * Days GitHub didn't return (future days in the current week) are null.
+ */
+export function heatmapColumns(days: HeatmapDay[], startKey: string, weeks = 52): (HeatmapDay | null)[][] {
+  const byDate = new Map(days.map((d) => [d.date, d]));
+  return Array.from({ length: weeks }, (_, w) =>
+    Array.from({ length: 7 }, (_, d) => byDate.get(addDays(startKey, w * 7 + d)) ?? null),
+  );
 }
 
 export function weekDays(todayKey: string): string[] {

@@ -120,7 +120,7 @@ export interface Stats {
   commitsPerDay: { date: string; count: number }[];
   promptsPerDay: { date: string; count: number }[];
   commitDays: Record<string, number>; // GitHub commit contributions per GitHub calendar day, all time
-  heatmap: { days: HeatmapDay[]; total: number; apiTotal: number; weeks: number };
+  heatmap: { days: HeatmapDay[]; total: number; apiTotal: number; weeks: number; startKey: string };
   github: {
     contributionsThisYear: number;
     year: number;

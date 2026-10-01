@@ -224,7 +224,7 @@
           "cacheRead": 3242032,
           "output": 53440,
           "sessions": 1,
-          "prompts": 5,
+          "prompts": 3,
           "promptsByHour": [
             0,
             0,
@@ -248,10 +248,10 @@
             0,
             0,
             0,
-            5,
+            3,
             0
           ],
-          "longestSessionMinutes": 679,
+          "longestSessionMinutes": 682,
           "tools": {
             "Agent": 3,
             "Bash": 2,
@@ -297,12 +297,12 @@
     "2026-10-01": {
       "claude-code": {
         "all": {
-          "freshInput": 211,
-          "cacheWrite": 349832,
-          "cacheRead": 23238036,
-          "output": 185192,
-          "sessions": 3,
-          "prompts": 10,
+          "freshInput": 227,
+          "cacheWrite": 365625,
+          "cacheRead": 26199374,
+          "output": 196650,
+          "sessions": 0,
+          "prompts": 4,
           "promptsByHour": [
             0,
             0,
@@ -313,7 +313,7 @@
             0,
             0,
             3,
-            7,
+            1,
             0,
             0,
             0,
@@ -331,19 +331,19 @@
           ],
           "longestSessionMinutes": 0,
           "tools": {
-            "Bash": 19,
-            "Edit": 32,
-            "PowerShell": 22,
-            "Read": 16,
-            "Write": 41
+            "Bash": 25,
+            "Edit": 43,
+            "PowerShell": 23,
+            "Read": 17,
+            "Write": 43
           }
         },
         "families": {
           "Opus": {
-            "freshInput": 86,
-            "cacheWrite": 149348,
-            "cacheRead": 12829912,
-            "output": 125238,
+            "freshInput": 102,
+            "cacheWrite": 165141,
+            "cacheRead": 15791250,
+            "output": 136696,
             "sessions": 0,
             "prompts": 1
           },
@@ -352,8 +352,8 @@
             "cacheWrite": 200484,
             "cacheRead": 10408124,
             "output": 59954,
-            "sessions": 3,
-            "prompts": 6
+            "sessions": 0,
+            "prompts": 3
           }
         }
       }

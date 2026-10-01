@@ -1,65 +1,65 @@
 {
-  "generatedAt": "2026-10-01T13:19:01.000Z",
+  "generatedAt": "2026-10-01T13:21:48.000Z",
   "timezone": "America/New_York",
   "claudeWeek": {
-    "freshInput": 31424,
-    "cacheWrite": 704909,
-    "cacheRead": 26480068,
-    "output": 238632,
-    "totalInput": 27216401,
-    "sessions": 4,
-    "prompts": 15,
+    "freshInput": 31440,
+    "cacheWrite": 720702,
+    "cacheRead": 29441406,
+    "output": 250090,
+    "totalInput": 30193548,
+    "sessions": 1,
+    "prompts": 7,
     "families": [
       {
         "label": "Opus",
-        "value": 13104584,
-        "percent": 47.7
+        "value": 16093189,
+        "percent": 52.9
       },
       {
         "label": "Sonnet",
         "value": 12747641,
-        "percent": 46.4
+        "percent": 41.9
       },
       {
         "label": "Haiku",
         "value": 1602808,
-        "percent": 5.8
+        "percent": 5.3
       }
     ]
   },
   "claudeAllTime": {
-    "freshInput": 284211,
-    "cacheWrite": 1448689,
-    "cacheRead": 29886823,
-    "output": 311861,
-    "totalInput": 31619723,
-    "sessions": 7,
-    "prompts": 20,
+    "freshInput": 284227,
+    "cacheWrite": 1464482,
+    "cacheRead": 32848161,
+    "output": 323319,
+    "totalInput": 34596870,
+    "sessions": 4,
+    "prompts": 12,
     "families": [
       {
         "label": "Opus",
-        "value": 13900750,
-        "percent": 43.5
+        "value": 16889355,
+        "percent": 48.4
       },
       {
         "label": "Sonnet",
         "value": 13163073,
-        "percent": 41.2
+        "percent": 37.7
       },
       {
         "label": "Fable",
         "value": 3264953,
-        "percent": 10.2
+        "percent": 9.3
       },
       {
         "label": "Haiku",
         "value": 1602808,
-        "percent": 5
+        "percent": 4.6
       }
     ],
-    "avgPromptsPerSession": 2.9,
+    "avgPromptsPerSession": 3,
     "longestSessionMinutes": 1242,
-    "mostActiveHour": 9,
+    "mostActiveHour": 8,
     "firstDay": "2026-06-25"
   },
   "codexAllTime": {
@@ -79,52 +79,52 @@
     ]
   },
   "topTools": {
-    "totalCalls": 342,
+    "totalCalls": 363,
     "rows": [
       {
         "label": "Bash",
-        "value": 115,
-        "percent": 33.6
+        "value": 121,
+        "percent": 33.3
       },
       {
         "label": "PowerShell",
-        "value": 60,
-        "percent": 17.5
+        "value": 61,
+        "percent": 16.8
       },
       {
         "label": "Write",
-        "value": 54,
-        "percent": 15.8
-      },
-      {
-        "label": "Read",
-        "value": 45,
-        "percent": 13.2
+        "value": 56,
+        "percent": 15.4
       },
       {
         "label": "Edit",
-        "value": 35,
-        "percent": 10.2
+        "value": 46,
+        "percent": 12.7
+      },
+      {
+        "label": "Read",
+        "value": 46,
+        "percent": 12.7
       },
       {
         "label": "TaskCreate",
         "value": 14,
-        "percent": 4.1
+        "percent": 3.9
       },
       {
         "label": "TaskUpdate",
         "value": 5,
-        "percent": 1.5
+        "percent": 1.4
       },
       {
         "label": "Agent",
         "value": 3,
-        "percent": 0.9
+        "percent": 0.8
       },
       {
         "label": "Other (7 tools)",
         "value": 11,
-        "percent": 3.2
+        "percent": 3
       }
     ]
   },
@@ -132,65 +132,65 @@
     "timeBuckets": [
       {
         "label": "Morning",
-        "value": 34,
-        "percent": 27.6
+        "value": 28,
+        "percent": 24.3
       },
       {
         "label": "Daytime",
         "value": 47,
-        "percent": 38.2
+        "percent": 40.9
       },
       {
         "label": "Evening",
         "value": 26,
-        "percent": 21.1
+        "percent": 22.6
       },
       {
         "label": "Night",
-        "value": 16,
-        "percent": 13
+        "value": 14,
+        "percent": 12.2
       }
     ],
     "weekdays": [
       {
         "label": "Monday",
         "value": 6,
-        "percent": 4.9
+        "percent": 5.2
       },
       {
         "label": "Tuesday",
         "value": 6,
-        "percent": 4.9
+        "percent": 5.2
       },
       {
         "label": "Wednesday",
-        "value": 46,
-        "percent": 37.4
+        "value": 44,
+        "percent": 38.3
       },
       {
         "label": "Thursday",
-        "value": 39,
-        "percent": 31.7
+        "value": 33,
+        "percent": 28.7
       },
       {
         "label": "Friday",
         "value": 9,
-        "percent": 7.3
+        "percent": 7.8
       },
       {
         "label": "Saturday",
         "value": 14,
-        "percent": 11.4
+        "percent": 12.2
       },
       {
         "label": "Sunday",
         "value": 3,
-        "percent": 2.4
+        "percent": 2.6
       }
     ],
     "headline": "I'm a Daytime builder, most active on Wednesday",
     "commitEvents": 99,
-    "promptEvents": 24
+    "promptEvents": 16
   },
   "languages": [
     {
@@ -936,11 +936,11 @@
     },
     {
       "date": "2026-09-30",
-      "count": 5
+      "count": 3
     },
     {
       "date": "2026-10-01",
-      "count": 10
+      "count": 4
     }
   ],
   "commitDays": {

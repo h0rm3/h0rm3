@@ -38,7 +38,7 @@ test("top tools: top 8 plus an Other row, percentages sum to 100", () => {
   assert.deepEqual(t.rows.slice(0, 2).map((r) => [r.label, r.value]), [["Bash", 3], ["Read", 2]]);
   assert.equal(t.rows[8].label, "Other (2 tools)"); // 10 distinct tools -> top 8 + 2 others
   assert.equal(t.rows[8].value, 2);
-  assert.equal(Math.round(t.rows.reduce((a, r) => a + r.percent, 0) * 10), 1000);
+  assert.ok(Math.abs(t.rows.reduce((a, r) => a + r.percent, 0) - 100) <= 0.1 + 1e-9);
 });
 
 test("weekly totals never exceed all-time totals", () => {

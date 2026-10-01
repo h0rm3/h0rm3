@@ -27,10 +27,16 @@ export function blockBar(value: number, max: number, width = 25): string {
   return "█".repeat(filled) + "░".repeat(width - filled);
 }
 
-/** One-decimal percentages via largest remainder, so displayed values sum to exactly 100.0. */
+/**
+ * One-decimal percentages. Plain rounding keeps equal values equal; only if that drifts more than
+ * 0.1 from 100 does it fall back to largest-remainder, which sums to exactly 100.0.
+ */
 export function percentRows(items: { label: string; value: number }[]): Row[] {
   const total = items.reduce((a, i) => a + i.value, 0);
   if (total === 0) return items.map((i) => ({ ...i, percent: 0 }));
+  const plain = items.map((i) => Math.round((i.value / total) * 1000) / 10);
+  const plainSum = plain.reduce((a, b) => a + b, 0);
+  if (Math.abs(plainSum - 100) <= 0.1 + 1e-9) return items.map((i, idx) => ({ label: i.label, value: i.value, percent: plain[idx] }));
   const raw = items.map((i) => (i.value / total) * 1000);
   const floors = raw.map(Math.floor);
   let remaining = 1000 - floors.reduce((a, b) => a + b, 0);

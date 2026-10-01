@@ -23,8 +23,7 @@ export async function parseCodex(rootDir = DEFAULT_CODEX_DIR, asOf?: Date): Prom
     let sessionId = path.basename(file, ".jsonl");
     let model = "unknown";
     let prev = { input: 0, cached: 0, output: 0 };
-    let start: string | null = null;
-    let end: string | null = null;
+    const span = { start: "", end: "" };
 
     const rl = createInterface({ input: createReadStream(file, { encoding: "utf8" }), crlfDelay: Infinity });
     for await (const line of rl) {
@@ -37,8 +36,8 @@ export async function parseCodex(rootDir = DEFAULT_CODEX_DIR, asOf?: Date): Prom
       }
       const ts: string | undefined = rec.timestamp;
       if (!ts || (cutoff && ts > cutoff)) continue;
-      start = start && start <= ts ? start : ts;
-      end = end && end >= ts ? end : ts;
+      if (!span.start || ts < span.start) span.start = ts;
+      if (!span.end || ts > span.end) span.end = ts;
 
       if (rec.type === "session_meta" && rec.payload?.session_id) {
         sessionId = rec.payload.session_id;
@@ -73,7 +72,7 @@ export async function parseCodex(rootDir = DEFAULT_CODEX_DIR, asOf?: Date): Prom
         }
       }
     }
-    if (start && end) sessions.push({ source: "codex", sessionId, start, end });
+    if (span.start) sessions.push({ source: "codex", sessionId, start: span.start, end: span.end });
   }
 
   const promptList = [...prompts.values()];

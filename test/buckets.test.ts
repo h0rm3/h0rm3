@@ -41,9 +41,15 @@ test("weekday names, Monday-first", () => {
   for (let i = 0; i < 7; i++) assert.equal(weekdayName(`2026-01-${String(5 + i).padStart(2, "0")}`), WEEKDAY_ORDER[i]);
 });
 
-test("percentages always sum to exactly 100.0", () => {
-  const rows = percentRows([1, 1, 1, 1, 1, 1, 1].map((value, i) => ({ label: String(i), value })));
-  assert.equal(Math.round(rows.reduce((a, r) => a + r.percent, 0) * 10), 1000);
+const drift = (rows: { percent: number }[]) => Math.abs(rows.reduce((a, r) => a + r.percent, 0) - 100);
+
+test("percentages sum to 100 within 0.1, and equal values get equal percents when possible", () => {
+  const seven = percentRows([1, 1, 1, 1, 1, 1, 1].map((value, i) => ({ label: String(i), value })));
+  assert.ok(drift(seven) <= 0.1 + 1e-9);
+  assert.ok(seven.every((r) => r.percent === 14.3));
+  // 12 equal items round to 8.3 each = 99.6, so the largest-remainder fallback kicks in
+  const twelve = percentRows(Array.from({ length: 12 }, (_, i) => ({ label: String(i), value: 1 })));
+  assert.ok(drift(twelve) <= 0.1 + 1e-9);
   const skewed = percentRows([{ label: "a", value: 9991 }, { label: "b", value: 3 }, { label: "c", value: 3 }, { label: "d", value: 3 }]);
-  assert.equal(Math.round(skewed.reduce((a, r) => a + r.percent, 0) * 10), 1000);
+  assert.ok(drift(skewed) <= 0.1 + 1e-9);
 });

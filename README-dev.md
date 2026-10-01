@@ -1,72 +1,69 @@
 # Developer notes
 
-This repo generates `README.md` (this profile's homepage) from real GitHub + local AI-tool
-usage data. Nothing in `README.md` or `assets/*.svg` is hand-edited — running `npm run update`
-regenerates and overwrites all of it.
+`npm run update` regenerates `README.md`, `assets/*.svg` and `data/*.json` from the GitHub API and
+local Claude Code / Codex logs, runs the SVG + privacy guard, then commits and pushes to `main` only
+if something changed. Nothing generated is hand-edited.
 
 ## Files
 
 ```
 src/
-  types.ts            Shared data shapes (Stats, AiTurn, AiPrompt, CommitRecord, ...)
-  normalize.ts         Raw model id -> family (Opus/Sonnet/Haiku/Fable/GPT/...)
-  dateUtils.ts          Local-timezone date-key helpers shared by github.ts and metrics.ts
-  github.ts             GitHub REST + GraphQL: repos, language bytes, commits, daily commit counts
-  metrics.ts            All the derived numbers: streaks, time/weekday buckets, AI-week totals
+  tz.ts               America/New_York date keys, hours, and zone<->UTC conversion (all bucketing goes through here)
+  types.ts            Shared shapes: parsed logs, history, published Stats
+  normalize.ts        Raw model id -> family (Opus/Sonnet/Haiku/Fable/GPT/raw id)
   parsers/
-    claudeCode.ts        Reads ~/.claude/projects/**/*.jsonl
-    codex.ts              Reads ~/.codex/sessions/**/*.jsonl
+    claudeCode.ts     ~/.claude/projects/**/*.jsonl incl. subagents; dedupe by message id + requestId
+    codex.ts          ~/.codex/sessions/**/*.jsonl; usage from cumulative token_count deltas
+  history.ts          Per-NY-day aggregates + idempotent max-merge into data/history.json
+  metrics.ts          Pure calculations: streaks, buckets, percentages, AI blocks, tools, heatmap layout
+  github.ts           REST + GraphQL fetches (languages, commits, contributions, profile stats)
+  stats.ts            Assembles the published Stats object (aggregate numbers only)
+  badges.ts           Language -> devicon badge, only if the icon URL resolves
+  census.ts           Per-raw-model census for the local QC report
+  qc.ts               XML well-formedness, SVG safety and privacy checks
   render/
-    theme.ts              Shared SVG colors + helpers
-    cards.ts               languages.svg / streak.svg / commits.svg generators
-    readme.ts               Fills templates/README.template.md with computed stats
-
+    theme.ts          Every color, font, size and padding used by the SVG cards
+    cards.ts          All SVG cards
+    readme.ts         Fills templates/README.template.md
 scripts/
-  update.ts              Orchestrator: fetch -> compute -> render -> write -> git commit/push
-  install-task.ps1        Registers the Windows Task Scheduler job
-
-templates/README.template.md   The editable surrounding text; code owns everything between {{PLACEHOLDERS}}
-data/stats.json                 Every computed number from the most recent run (history is just git log on this file)
-assets/*.svg                     Generated chart/card images, committed so they render on GitHub
-test/*.test.ts                    Unit tests (node:test) for the logic most likely to have edge cases
+  update.ts           Orchestrator (--dry-run, --as-of=<ISO> for deterministic re-runs)
+  qc.ts               Full QC gate; writes QC-REPORT.md (gitignored)
+  install-task.ps1    Optional Windows Task Scheduler job (not installed automatically)
+templates/README.template.md   Layout; code fills the {{PLACEHOLDERS}}
+data/history.json              Daily AI aggregates that survive Claude Code's log cleanup
+data/stats.json                Everything shown in the README, from the latest run
+test/*.test.ts                 node:test unit tests
 ```
 
 ## Running it
 
 ```
 npm install
-cp .env.example .env   # fill in GITHUB_TOKEN (scopes: repo, read:user) and GITHUB_USERNAME
-npm run update          # regenerates everything and commits+pushes if anything changed
-npm run update:dry      # same, but never touches git
+cp .env.example .env    # GITHUB_TOKEN (scopes: repo, read:user) and GITHUB_USERNAME
+npm run update:dry       # generate files only
+npm run qc               # full QC gate + QC-REPORT.md
+npm run update           # generate, guard, commit, push
 npm test
 ```
 
-## Adding a new AI tool source
+## History
 
-1. Add a parser in `src/parsers/yourTool.ts` that returns `{ turns: AiTurn[], prompts: AiPrompt[] }`
-   (see `claudeCode.ts` / `codex.ts` for the shape). Read the tool's actual on-disk logs — don't
-   guess field names.
-2. If the tool has its own model-naming scheme, add substring matches to `KNOWN_FAMILIES` in
-   `src/normalize.ts`.
-3. In `scripts/update.ts`, import your parser and spread its `turns`/`prompts` into the arrays
-   passed to `buildStats()` alongside Claude Code and Codex.
-4. Everything downstream (the weekly token table, builder profile, tests) works automatically —
-   it only ever consumes the normalized `AiTurn`/`AiPrompt` shape, never a tool-specific one.
+Claude Code deletes transcripts older than `cleanupPeriodDays`. Each run aggregates the logs per New
+York day and merges them into `data/history.json` with a field-wise max, so days whose logs were
+deleted keep their numbers and re-running never double counts. All-time numbers are summed from
+history. If you ever change parsing so that numbers legitimately go *down*, delete the affected days
+from `data/history.json` while their logs still exist, then re-run.
 
-Cursor was investigated and skipped: it has no locally-readable token/usage data (only an
-unrelated conversation-search SQLite index), so there's nothing to parse there.
+## Adding an AI tool source
+
+1. Add `src/parsers/yourTool.ts` returning `ParsedLogs` (messages, prompts, tools, sessions). Read the
+   real logs first; don't guess field names.
+2. Add the source name to `Source` in `src/types.ts` and aggregate it in `scripts/update.ts`
+   (`aggregateDays("your-tool", logs)`).
+3. Add family substrings to `src/normalize.ts` if needed, and decide where it should be displayed.
+
+Cursor has no locally readable token/usage data, so it is not a source.
 
 ## Changing colors
 
-Everything lives in `COLORS` and `PALETTE` at the top of `src/render/theme.ts`. `COLORS` drives
-card background/border/text/accent; `PALETTE` is the cycling list of segment colors for the
-languages stacked bar. Re-run `npm run update:dry` and open the SVGs to preview.
-
-## Automation
-
-`scripts/install-task.ps1` registers a Windows Task Scheduler job (`h0rm3-profile-stats-update`)
-that runs `npm run update` daily at 11:30 PM and again at logon. Install it with:
-
-```
-powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1
-```
+Edit `COLORS`, `PALETTE` and `HEAT_LEVELS` in `src/render/theme.ts`, then `npm run update:dry`.

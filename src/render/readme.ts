@@ -1,38 +1,69 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Stats } from "../types.js";
-import { TIME_BUCKET_EMOJI } from "../metrics.js";
+import type { AiBlock, Row, Stats } from "../types.js";
+import { TIME_BUCKET_EMOJI, blockBar } from "../metrics.js";
+import { TZ } from "../tz.js";
+import { fmt } from "./theme.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TEMPLATE_PATH = path.resolve(__dirname, "../../templates/README.template.md");
+const TEMPLATE_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../templates/README.template.md");
 
-function formatNumber(n: number): string {
-  return n.toLocaleString("en-US");
+const pct = (p: number) => `${p.toFixed(1)}%`.padStart(6);
+const fence = (lines: string[]) => "```\n" + lines.join("\n") + "\n```";
+
+/** label | value + unit (right-aligned) | bar | percent (right-aligned). Bars scale to the largest row. */
+function table(rows: Row[], unit: (n: number) => string, labelOf: (r: Row) => string = (r) => r.label): string[] {
+  if (rows.length === 0) return [];
+  const labels = rows.map(labelOf);
+  const values = rows.map((r) => `${fmt(r.value)} ${unit(r.value)}`);
+  const lw = Math.max(...labels.map((l) => l.length)) + 2;
+  const vw = Math.max(...values.map((v) => v.length));
+  const max = Math.max(...rows.map((r) => r.value));
+  return rows.map((r, i) => `${labels[i].padEnd(lw)}${values[i].padStart(vw)}  ${blockBar(r.value, max)}  ${pct(r.percent)}`);
 }
 
-function pct(p: number): string {
-  return `${p.toFixed(1)}%`;
+function aiHeader(b: AiBlock): string[] {
+  return [
+    `🔤 ${fmt(b.totalInput)} input tokens · ${fmt(b.output)} output tokens`,
+    `   ${fmt(b.freshInput)} fresh · ${fmt(b.cacheWrite)} cache write · ${fmt(b.cacheRead)} cache read`,
+    `🧠 ${fmt(b.sessions)} ${b.sessions === 1 ? "session" : "sessions"} · ${fmt(b.prompts)} ${b.prompts === 1 ? "prompt" : "prompts"}`,
+  ];
 }
 
-function renderAiWeekTable(aiWeek: Stats["aiWeek"]): string {
-  const lines: string[] = [];
-  lines.push(`🔤 ${formatNumber(aiWeek.totalInputTokens)} input tokens · ${formatNumber(aiWeek.outputTokens)} output tokens`);
-  lines.push(`🧠 ${formatNumber(aiWeek.sessions)} sessions · ${formatNumber(aiWeek.prompts)} prompts`);
+const tokensUnit = () => "tokens";
 
-  if (aiWeek.families.length > 0) {
-    lines.push("");
-    const nameWidth = Math.max(...aiWeek.families.map((f) => f.family.length)) + 2;
-    const tokenStrs = aiWeek.families.map((f) => `${formatNumber(f.tokens)} tokens`);
-    const tokenWidth = Math.max(...tokenStrs.map((s) => s.length));
-    aiWeek.families.forEach((f, i) => {
-      lines.push(`${f.family.padEnd(nameWidth)}${tokenStrs[i].padStart(tokenWidth)}  ${f.bar}  ${pct(f.percent).padStart(6)}`);
-    });
-  } else {
-    lines.push("", "No AI activity recorded in the last 7 days.");
-  }
+function renderWeek(b: AiBlock): string {
+  const lines = aiHeader(b);
+  lines.push("", ...(b.families.length ? table(b.families, tokensUnit) : ["No Claude Code activity in the last 7 days."]));
+  return fence(lines);
+}
 
-  return "```\n" + lines.join("\n") + "\n```";
+function duration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${fmt(h)}h ${m}m` : `${m}m`;
+}
+
+function longDate(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
+}
+
+function renderAllTime(b: Stats["claudeAllTime"]): string {
+  const lines = aiHeader(b);
+  const extras: string[] = [];
+  if (b.avgPromptsPerSession !== null) extras.push(`${b.avgPromptsPerSession.toFixed(1)} prompts/session avg`);
+  if (b.longestSessionMinutes !== null) extras.push(`longest session span ${duration(b.longestSessionMinutes)}`);
+  if (b.mostActiveHour !== null) extras.push(`busiest hour ${String(b.mostActiveHour).padStart(2, "0")}:00 ET`);
+  if (extras.length) lines.push(`⏱️ ${extras.join(" · ")}`);
+  if (b.firstDay) lines.push(`📅 since ${longDate(b.firstDay)}`);
+  lines.push("", ...(b.families.length ? table(b.families, tokensUnit) : ["No Claude Code activity recorded yet."]));
+  return fence(lines);
+}
+
+function renderTools(t: Stats["topTools"]): string {
+  if (t.rows.length === 0) return fence(["No tool calls recorded yet."]);
+  return fence([`🛠️ ${fmt(t.totalCalls)} tool calls, all time`, "", ...table(t.rows, (n) => (n === 1 ? "call" : "calls"))]);
 }
 
 function renderHeadline(bp: Stats["builderProfile"]): string {
@@ -40,72 +71,26 @@ function renderHeadline(bp: Stats["builderProfile"]): string {
   return `**${bp.headline}**${sub}`;
 }
 
-function renderBuilderProfileTable(bp: Stats["builderProfile"]): string {
-  const bucketLabels = bp.timeBuckets.map((b) => `${TIME_BUCKET_EMOJI[b.bucket]} ${b.bucket}`);
-  const weekdayLabels = bp.weekdays.map((w) => w.weekday);
-  const labelWidth = Math.max(...bucketLabels.map((l) => l.length), ...weekdayLabels.map((l) => l.length)) + 2;
-
-  const countStrs = (n: number) => `${formatNumber(n)} events`;
-  const allCounts = [...bp.timeBuckets.map((b) => b.count), ...bp.weekdays.map((w) => w.count)];
-  const countWidth = Math.max(...allCounts.map((c) => countStrs(c).length));
-
-  const lines: string[] = [];
-  bp.timeBuckets.forEach((b, i) => {
-    lines.push(`${bucketLabels[i].padEnd(labelWidth)}${countStrs(b.count).padStart(countWidth)}  ${b.bar}  ${pct(b.percent).padStart(6)}`);
-  });
-  lines.push("");
-  bp.weekdays.forEach((w, i) => {
-    lines.push(`${weekdayLabels[i].padEnd(labelWidth)}${countStrs(w.count).padStart(countWidth)}  ${w.bar}  ${pct(w.percent).padStart(6)}`);
-  });
-
-  return "```\n" + lines.join("\n") + "\n```";
+function renderProfile(bp: Stats["builderProfile"]): string {
+  const events = (n: number) => (n === 1 ? "event" : "events");
+  const all = [...bp.timeBuckets.map((r) => ({ ...r, label: `${TIME_BUCKET_EMOJI[r.label]} ${r.label}` })), ...bp.weekdays];
+  const lines = table(all, events);
+  lines.splice(bp.timeBuckets.length, 0, "");
+  return fence(lines);
 }
 
-/** GitHub Linguist language name -> devicon slug. Unmapped languages are skipped rather than guessed. */
-const DEVICON_SLUGS: Record<string, string> = {
-  JavaScript: "javascript",
-  TypeScript: "typescript",
-  Python: "python",
-  Java: "java",
-  "C++": "cplusplus",
-  C: "c",
-  "C#": "csharp",
-  Go: "go",
-  Rust: "rust",
-  Ruby: "ruby",
-  PHP: "php",
-  Swift: "swift",
-  Kotlin: "kotlin",
-  HTML: "html5",
-  CSS: "css3",
-  Shell: "bash",
-  PowerShell: "powershell",
-  Dockerfile: "docker",
-  Vue: "vuejs",
-  "Objective-C": "objectivec",
-  Scala: "scala",
-  Dart: "dart",
-  Lua: "lua",
-  Perl: "perl",
-  Haskell: "haskell",
-  R: "r",
-  "Jupyter Notebook": "jupyter",
-};
-
-function renderTechBadges(languages: Stats["languages"]): string {
-  const slugs = languages
-    .map((l) => DEVICON_SLUGS[l.name])
-    .filter((slug): slug is string => Boolean(slug));
-  if (slugs.length === 0) return "";
-  return slugs
-    .map((slug) => `<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/${slug}/${slug}-plain.svg" width="40" height="40" alt="${slug}"/>`)
+function renderBadges(urls: string[]): string {
+  return urls
+    .map((u) => {
+      const slug = u.split("/").at(-2) ?? "";
+      return `<img src="${u}" width="40" height="40" alt="${slug}"/>`;
+    })
     .join(" ");
 }
 
 export function renderReadme(stats: Stats): string {
-  const template = readFileSync(TEMPLATE_PATH, "utf8");
-  const now = new Date(stats.generatedAt);
-  const formatted = now.toLocaleString("en-US", {
+  const updated = new Date(stats.generatedAt).toLocaleString("en-US", {
+    timeZone: TZ,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -113,12 +98,16 @@ export function renderReadme(stats: Stats): string {
     minute: "2-digit",
     timeZoneName: "short",
   });
-  const lastUpdated = `Last updated ${formatted}`;
-
-  return template
-    .replaceAll("{{AI_WEEK_TABLE}}", renderAiWeekTable(stats.aiWeek))
-    .replaceAll("{{BUILDER_HEADLINE}}", renderHeadline(stats.builderProfile))
-    .replaceAll("{{BUILDER_PROFILE_TABLE}}", renderBuilderProfileTable(stats.builderProfile))
-    .replaceAll("{{TECH_BADGES}}", renderTechBadges(stats.languages))
-    .replaceAll("{{LAST_UPDATED}}", lastUpdated);
+  const replacements: Record<string, string> = {
+    "{{CLAUDE_WEEK}}": renderWeek(stats.claudeWeek),
+    "{{CLAUDE_ALL_TIME}}": renderAllTime(stats.claudeAllTime),
+    "{{TOP_TOOLS}}": renderTools(stats.topTools),
+    "{{BUILDER_HEADLINE}}": renderHeadline(stats.builderProfile),
+    "{{BUILDER_PROFILE}}": renderProfile(stats.builderProfile),
+    "{{BADGES}}": renderBadges(stats.badges),
+    "{{LAST_UPDATED}}": `Last updated ${updated}`,
+  };
+  let out = readFileSync(TEMPLATE_PATH, "utf8");
+  for (const [k, v] of Object.entries(replacements)) out = out.replaceAll(k, v);
+  return out;
 }

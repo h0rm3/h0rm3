@@ -1,0 +1,12 @@
+<svg width="480" height="140" viewBox="0 0 480 140" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0.5" y="0.5" width="479" height="139" rx="6" fill="#0d1117" stroke="#30363d"/>
+  <text x="20" y="30" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="16" font-weight="600" fill="#a371f7">Languages</text>
+  
+  <clipPath id="bar-clip"><rect x="20" y="56" width="440" height="24" rx="6"/></clipPath>
+  <g clip-path="url(#bar-clip)">
+  <rect x="20.00" y="56" width="419.32" height="24" fill="#a371f7"/>
+  <rect x="439.32" y="56" width="20.68" height="24" fill="#58a6ff"/>
+  </g>
+  <rect x="20" y="98" width="12" height="12" rx="2" fill="#a371f7"/><text x="38.00" y="108.00" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#c9d1d9" text-anchor="start">TypeScript 95.3%</text>
+  <rect x="240" y="98" width="12" height="12" rx="2" fill="#58a6ff"/><text x="258.00" y="108.00" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#c9d1d9" text-anchor="start">Other 4.7%</text>
+</svg>
